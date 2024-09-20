@@ -12,6 +12,15 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "konveyor",
+          "title": "Konveyor",
+          "icon": "media/konveyor-icon.svg"
+        }
+      ]
+    },
     "views": {
       "konveyor": [
         {
