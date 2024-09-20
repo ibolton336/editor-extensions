@@ -17,7 +17,7 @@
         {
           "id": "konveyor",
           "title": "Konveyor",
-          "icon": "media/konveyor-icon.svg"
+          "icon": "$(extensions)"
         }
       ]
     },
