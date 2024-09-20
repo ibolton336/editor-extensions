@@ -1,7 +1,9 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
+import * as vscode from "vscode";
+import * as path from "path";
 
-export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvider {
+export class KonveyorGUIWebviewViewProvider
+  implements vscode.WebviewViewProvider
+{
   public static readonly viewType = "konveyor.konveyorGUIView";
 
   private _webview?: vscode.Webview;
@@ -10,7 +12,7 @@ export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvide
 
   constructor(
     private readonly windowId: string,
-    private readonly extensionContext: vscode.ExtensionContext,
+    private readonly extensionContext: vscode.ExtensionContext
   ) {
     this.outputChannel = vscode.window.createOutputChannel("Konveyor");
   }
@@ -26,16 +28,14 @@ export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvide
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken,
+    _token: vscode.CancellationToken
   ): void | Thenable<void> {
     this._webview = webviewView.webview;
     this._webviewView = webviewView;
 
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        this.extensionContext.extensionUri
-      ]
+      localResourceRoots: [this.extensionContext.extensionUri],
     };
 
     webviewView.webview.html = this.getWebviewContent();
@@ -43,9 +43,14 @@ export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvide
 
   private getWebviewContent(): string {
     const scriptPathOnDisk = vscode.Uri.file(
-      path.join(this.extensionContext.extensionPath, 'dist', 'views.js')
+      path.join(this.extensionContext.extensionPath, "dist", "views.js")
     );
     const scriptUri = this._webview!.asWebviewUri(scriptPathOnDisk);
+    console.log("scriptUri", scriptUri);
+    console.log(
+      "this.extensionContext.extensionPath",
+      this.extensionContext.extensionPath
+    );
 
     return `<!DOCTYPE html>
     <html lang="en">
@@ -62,7 +67,10 @@ export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvide
         </script>
         <script src="${scriptUri}"></script>
         <script>
-          konveyor.render("App", window.vscodeApi, "${this._webview!.asWebviewUri(vscode.Uri.file(this.extensionContext.extensionPath))}");
+          import { render } from "./views";
+          render("App", acquireVsCodeApi(), "${this._webview!.asWebviewUri(
+            vscode.Uri.file(this.extensionContext.extensionPath)
+          )}");
         </script>
       </body>
     </html>`;
