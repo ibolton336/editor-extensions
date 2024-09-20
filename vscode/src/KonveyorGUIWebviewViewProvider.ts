@@ -1,21 +1,18 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 
-export class KonveyorGUIWebviewViewProvider
-  implements vscode.WebviewViewProvider
-{
+export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "konveyor.konveyorGUIView";
-  // public webviewProtocol: VsCodeWebviewProtocol;
 
   private _webview?: vscode.Webview;
   private _webviewView?: vscode.WebviewView;
   private outputChannel: vscode.OutputChannel;
-  // private enableDebugLogs: boolean;
 
-	constructor(
+  constructor(
     private readonly windowId: string,
     private readonly extensionContext: vscode.ExtensionContext,
   ) {
-      this.outputChannel = vscode.window.createOutputChannel("Konveyor");
+    this.outputChannel = vscode.window.createOutputChannel("Konveyor");
   }
 
   get isVisible() {
@@ -32,23 +29,23 @@ export class KonveyorGUIWebviewViewProvider
     _token: vscode.CancellationToken,
   ): void | Thenable<void> {
     this._webview = webviewView.webview;
-    // this._webview.onDidReceiveMessage((message) =>
-    //   this.handleWebviewMessage(message),
-    // );
-    webviewView.webview.html = this.getSidebarContent(
-      this.extensionContext,
-      webviewView,
-    );
+    this._webviewView = webviewView;
+
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        this.extensionContext.extensionUri
+      ]
+    };
+
+    webviewView.webview.html = this.getWebviewContent();
   }
 
-  getSidebarContent(
-    context: vscode.ExtensionContext | undefined,
-    panel: vscode.WebviewPanel | vscode.WebviewView,
-    // page: string | undefined = undefined,
-    // edits: FileEdit[] | undefined = undefined,
-    isFullScreen = false,
-  ): string {
-    const extensionUri = vscode.extensions.getExtension("Konveyor.konveyor")!.extensionUri;
+  private getWebviewContent(): string {
+    const scriptPathOnDisk = vscode.Uri.file(
+      path.join(this.extensionContext.extensionPath, 'react', 'dist', 'bundle.js')
+    );
+    const scriptUri = this._webview!.asWebviewUri(scriptPathOnDisk);
 
     return `<!DOCTYPE html>
     <html lang="en">
@@ -58,9 +55,9 @@ export class KonveyorGUIWebviewViewProvider
         <title>Konveyor</title>
       </head>
       <body>
-        <h1>Konveyor</h1>
+        <div id="root"></div>
+        <script src="${scriptUri}"></script>
       </body>
-    </html>
-    `;
+    </html>`;
   }
 }
