@@ -30,4 +30,12 @@ export class VsCodeExtension {
     // Commands
     registerAllCommands(context, this.extensionContext, this.sidebar);
   }
+
+  public getWindowId(): string {
+    return this.windowId;
+  }
+
+  public getSidebar(): KonveyorGUIWebviewViewProvider {
+    return this.sidebar;
+  }
 }
