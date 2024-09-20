@@ -17,10 +17,13 @@
 		"forceConsistentCasingInFileNames": true,
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
-		"noUnusedParameters": true
+		"noUnusedParameters": true,
+		"jsx": "react-jsx"
 	},
+	"include": [
+		"src/**/*"
+	],
 	"exclude": [
-		"node_modules",
-		"react"
+		"node_modules"
 	]
 }
