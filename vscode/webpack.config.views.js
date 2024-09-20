@@ -3,7 +3,7 @@
 const path = require("path");
 const webpack = require("webpack");
 const ReactRefreshWebpackPlugin = require("@pmmmwh/react-refresh-webpack-plugin");
-const CopyWebpackPlugin = require("copy-webpack-plugin"); // Import the plugin
+const CopyWebpackPlugin = require("copy-webpack-plugin");
 const WebpackShellPluginNext = require("webpack-shell-plugin-next");
 
 module.exports = (env, { mode }) => {

@@ -43,7 +43,7 @@ export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvide
 
   private getWebviewContent(): string {
     const scriptPathOnDisk = vscode.Uri.file(
-      path.join(this.extensionContext.extensionPath, 'react', 'dist', 'bundle.js')
+      path.join(this.extensionContext.extensionPath, 'dist', 'views.js')
     );
     const scriptUri = this._webview!.asWebviewUri(scriptPathOnDisk);
 
