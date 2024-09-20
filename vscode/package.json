@@ -29,7 +29,33 @@
           "name": "Konveyor GUI"
         }
       ]
-    }
+    },
+    "commands": [
+      {
+        "command": "konveyor.konveyorGUIView",
+        "title": "Open GUI",
+        "category": "Konveyor"
+      },
+      {
+        "command": "konveyor.toggleFullScreen",
+        "title": "Toggle GUI Fullscreen",
+        "category": "Konveyor"
+      }
+    ],
+    "view/title": [
+      {
+        "command": "konveyor.toggleFullScreen",
+        "group": "navigation@1",
+        "when": "view == konveyor.konveyorGUIView"
+      }
+    ],
+    "editor/title": [
+      {
+        "command": "konveyor.toggleFullScreen",
+        "group": "navigation@1",
+        "when": "activeWebviewPanelId == konveyor.konveyorGUIView"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
