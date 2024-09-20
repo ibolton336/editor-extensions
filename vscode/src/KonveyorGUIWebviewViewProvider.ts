@@ -56,7 +56,14 @@ export class KonveyorGUIWebviewViewProvider implements vscode.WebviewViewProvide
       </head>
       <body>
         <div id="root"></div>
+        <script>
+          const vscode = acquireVsCodeApi();
+          window.vscodeApi = vscode;
+        </script>
         <script src="${scriptUri}"></script>
+        <script>
+          konveyor.render("App", window.vscodeApi, "${this._webview!.asWebviewUri(vscode.Uri.file(this.extensionContext.extensionPath))}");
+        </script>
       </body>
     </html>`;
   }
