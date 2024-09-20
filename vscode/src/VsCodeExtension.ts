@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-// TODO: Install @types/uuid to remove this ignore
 import { v4 as uuidv4 } from "uuid";
 import { KonveyorGUIWebviewViewProvider } from "./KonveyorGUIWebviewViewProvider";
 import { registerAllCommands } from "./commands";
