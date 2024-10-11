@@ -75,11 +75,10 @@ export class AnalyzerClient {
       },
       async (progress) => {
         return new Promise<void>((resolve, reject) => {
-          const requestId = this.requestId++;
           const request =
             JSON.stringify({
               jsonrpc: "2.0",
-              id: requestId,
+              id: this.requestId++,
               method: "analysis_engine.Analyze",
               params: [
                 {
@@ -92,57 +91,33 @@ export class AnalyzerClient {
           progress.report({ message: "Running..." });
           this.analyzerServer?.stdin.write(request);
 
-          let dataBuffer = "";
           const analysisTimeout = setTimeout(() => {
             vscode.window.showErrorMessage("Analysis process timed out.");
             this.outputChannel.appendLine("Analysis process timed out.");
             reject(new Error("Analysis process timed out."));
           }, 300000); // Timeout after 5 minutes
 
-          this.analyzerServer!.stdout.on("data", (data) => {
-            dataBuffer += data.toString(); // Append incoming data to the buffer
+          let rulesets: RuleSet[] = [];
+          this.analyzerServer!.stdout.once("data", (data) => {
+            clearTimeout(analysisTimeout);
+            progress.report({ message: "Analysis complete!" });
+            rulesets = data.result["Rulesets"] as RuleSet[];
 
-            let newlineIndex;
-            // Process all complete lines (JSON-RPC messages)
-            while ((newlineIndex = dataBuffer.indexOf("\n")) !== -1) {
-              const line = dataBuffer.slice(0, newlineIndex).trim(); // Extract a complete line
-              dataBuffer = dataBuffer.slice(newlineIndex + 1); // Remove the processed line
+            const diagnosticsMap: Map<string, vscode.Diagnostic[]> = new Map();
+            processIncidents(rulesets, diagnosticsMap);
 
-              try {
-                const response = JSON.parse(line);
+            diagnosticsMap.forEach((diagnostics, fileKey) => {
+              const fileUri = vscode.Uri.parse(fileKey);
+              this.diagnosticCollection.set(fileUri, diagnostics);
+            });
+            progress.report({ message: "Results processed!" });
 
-                // Check if the response matches the request ID
-                if (response.id === requestId) {
-                  clearTimeout(analysisTimeout);
-                  progress.report({ message: "Analysis complete!" });
-
-                  const rulesets = response.result["Rulesets"] as RuleSet[];
-                  if (rulesets.length === 0) {
-                    this.outputChannel.appendLine("No RuleSets from analysis!");
-                  }
-
-                  const diagnosticsMap: Map<string, vscode.Diagnostic[]> = new Map();
-                  processIncidents(rulesets, diagnosticsMap);
-
-                  diagnosticsMap.forEach((diagnostics, fileKey) => {
-                    const fileUri = vscode.Uri.parse(fileKey);
-                    this.diagnosticCollection.set(fileUri, diagnostics);
-                  });
-
-                  progress.report({ message: "Results processed!" });
-
-                  resolve();
-                  if (webview) {
-                    webview.postMessage({
-                      type: "analysisComplete",
-                      data: rulesets,
-                    });
-                  }
-                }
-              } catch (err: any) {
-                this.outputChannel.appendLine(`Error parsing analysis result: ${err.message}`);
-                reject(err);
-              }
+            resolve();
+            if (webview) {
+              webview.postMessage({
+                type: "analysisComplete",
+                data: rulesets,
+              });
             }
           });
         });
