@@ -26,6 +26,7 @@ const commandsMap: (state: ExtensionState) => {
       analyzerClient.start();
     },
     "konveyor.runAnalysis": async () => {
+      console.log("Running analysis... in commands.ts", state);
       const analyzerClient = state.analyzerClient;
       if (!analyzerClient || !(await analyzerClient.canAnalyze())) {
         vscode.window.showErrorMessage("Analyzer must be started before run!");

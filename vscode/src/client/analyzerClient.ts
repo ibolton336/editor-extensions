@@ -37,9 +37,11 @@ export class AnalyzerClient {
         return;
       }
     });
+
     this.analyzerServer = spawn(this.getAnalyzerPath(), this.getAnalyzerArgs(), {
       cwd: this.extContext!.extensionPath,
     });
+
     this.analyzerServer.stderr.on("data", (data) => {
       this.outputChannel.appendLine(`${data.toString()}`);
     });

@@ -43,7 +43,8 @@ export function setupWebviewMessageListener(webview: vscode.Webview, state: Exte
 
         const folderUri = await vscode.window.showOpenDialog(options);
         if (folderUri && folderUri[0]) {
-          vscode.commands.executeCommand("konveyor.startAnalysis", folderUri[0]);
+          console.log("Starting analysis for folder:", folderUri[0].fsPath);
+          vscode.commands.executeCommand("konveyor.runAnalysis", folderUri[0]);
         } else {
           webview.postMessage({
             type: "analysisFailed",
