@@ -459,10 +459,7 @@
         "konveyor.kai.providerArgs": {
           "type": "object",
           "default": {
-            "model_id": "meta-llama/llama-3-1-70b-instruct",
-            "parameters": {
-              "max_new_tokens": 2048
-            }
+            "model": "gpt-3.5-turbo"
           },
           "description": "Kai provider arguments",
           "scope": "window"

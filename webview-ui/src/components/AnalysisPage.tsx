@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Button,
   ButtonVariant,
@@ -43,6 +43,12 @@ const AnalysisPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [focusedIncident, setFocusedIncident] = useState<Incident | null>(null);
   const [expandedViolations, setExpandedViolations] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!serverRunning) {
+      dispatch(startServer());
+    }
+  }, []);
 
   const handleIncidentSelect = (incident: Incident) => {
     setFocusedIncident(incident);

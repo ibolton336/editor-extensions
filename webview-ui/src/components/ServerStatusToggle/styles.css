@@ -3,6 +3,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
+  border-bottom: 1px solid #404040;
 }
 
 .server-status-wrapper {
@@ -11,6 +12,7 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 8px 16px;
+  height: 40px;
 }
 
 .server-status-label {
@@ -21,6 +23,13 @@
   white-space: nowrap;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  line-height: 24px;
+}
+
+.server-status-label-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 24px !important;
 }
 
 .vertical-divider {
@@ -30,12 +39,21 @@
   margin: 0 8px;
 }
 
+.server-action-container {
+  display: flex;
+  align-items: center;
+  height: 24px;
+}
+
 .server-action-button {
-  padding: 2px 8px !important;
   color: #d2d4d8 !important;
-  display: flex !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 8px !important;
+  display: inline-flex !important;
   align-items: center !important;
   gap: 8px !important;
+  line-height: 1 !important;
 }
 
 .server-action-button:hover {
@@ -43,7 +61,17 @@
 }
 
 .server-action-button svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   margin: 0 !important;
+}
+
+.server-action-text {
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.server-status-spinner {
+  margin: 0 8px;
 }

@@ -53,6 +53,55 @@ class VsCodeExtension {
     };
 
     this.initializeExtension(context);
+
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      const uri = e.document.uri;
+      this.handleDocumentChange(uri);
+    });
+  }
+
+  private handleDocumentChange(uri: vscode.Uri) {
+    // Check if this URI is one that you care about (part of localChanges or other criteria)
+    const relevantChanges = this.state.data.localChanges.filter(
+      (change) => change.originalUri.toString() === uri.toString(),
+    );
+    console.log("relevantChanges", relevantChanges);
+
+    if (relevantChanges.length > 0) {
+      // The file is relevant, do something with it (track if diff has been accepted, etc.)
+      this.trackChangeAcceptance(uri);
+    }
+  }
+
+  private trackChangeAcceptance(uri: vscode.Uri) {
+    const index = this.state.data.localChanges.findIndex(
+      (change) => change.originalUri.toString() === uri.toString(),
+    );
+
+    console.log("index inside track acceptance", index);
+    console.log("localChanges", this.state.data.localChanges);
+
+    if (index >= 0) {
+      this.state.mutateData((draft) => {
+        console.log("draft.localChanges[index]", draft.localChanges[index]);
+        console.log(
+          "we are making it here... inside track acceptance",
+          draft.localChanges[index].state,
+        );
+
+        // Mark the change as "viewed" or "pending" (not "applied" yet)
+        draft.localChanges[index].state = "applied"; // Custom state, mark as pending for manual application
+      });
+
+      // Optionally send message to webview to update UI
+      this.updateWebviewState();
+    }
+  }
+
+  private updateWebviewState() {
+    this.state.webviewProviders.forEach((provider) => {
+      provider.sendMessageToWebview(this.state.data); // Send the updated state
+    });
   }
 
   private initializeExtension(context: vscode.ExtensionContext): void {

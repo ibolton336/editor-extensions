@@ -28,7 +28,7 @@ const actions: {
   [GET_SOLUTION](scope: Scope) {
     vscode.commands.executeCommand("konveyor.getSolution", scope.incident, scope.violation);
 
-    vscode.commands.executeCommand("konveyor.diffView.focus");
+    // vscode.commands.executeCommand("konveyor.diffView.focus");
     vscode.commands.executeCommand("konveyor.showResolutionPanel");
   },
   [VIEW_FIX](change: LocalChange) {
