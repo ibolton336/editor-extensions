@@ -53,8 +53,8 @@ const ResolutionPage: React.FC = () => {
   // Display loading screen when fetching solution
   if (isLoading) {
     return (
-      <Page>
-        <PageSection className="pf-v5-u-px-xl pf-v5-u-py-md">
+      <Page className={spacing.mtSm}>
+        <PageSection className={spacing.mbSm}>
           <LoadingScreen />
         </PageSection>
       </Page>
@@ -64,8 +64,8 @@ const ResolutionPage: React.FC = () => {
   // Display "Changes Applied" when the solution is accepted
   if (isResolved) {
     return (
-      <Page>
-        <PageSection className="pf-v6-u-px-xl pf-v6-u-py-md">
+      <Page className={spacing.mtSm}>
+        <PageSection className={spacing.mtSm}>
           <EmptyState variant="lg" icon={CheckCircleIcon} titleText="Changes Applied">
             <EmptyStateBody>
               The changes have been processed. You can close this panel or wait for the next
@@ -80,8 +80,8 @@ const ResolutionPage: React.FC = () => {
   // Display "No Active Solutions" when no resolution exists
   if (!resolution) {
     return (
-      <Page>
-        <PageSection className="pf-v5-u-px-xl pf-v5-u-py-md">
+      <Page className={spacing.mtSm}>
+        <PageSection className={spacing.mtSm}>
           <EmptyState variant="lg" icon={WarningTriangleIcon} titleText="No Active Solutions">
             <EmptyStateBody>There are no solutions to review at this time.</EmptyStateBody>
           </EmptyState>
@@ -91,8 +91,8 @@ const ResolutionPage: React.FC = () => {
   }
 
   return (
-    <Page>
-      <PageSection className="pf-v5-u-px-xl pf-v5-u-py-md">
+    <Page className={spacing.mtSm}>
+      <PageSection className={spacing.mtSm}>
         <Flex>
           <FlexItem>
             <Title headingLevel="h1" size="2xl">

@@ -21,6 +21,7 @@ import {
   getConfigLabelSelector,
   updateUseDefaultRuleSets,
 } from "../utilities";
+import { parsePatch, formatPatch } from "diff";
 
 export class AnalyzerClient {
   private kaiRpcServer: ChildProcessWithoutNullStreams | null = null;
@@ -240,6 +241,65 @@ export class AnalyzerClient {
     );
   }
 
+  public filterSolutionResponse(response: SolutionResponse, incidentUri: string): SolutionResponse {
+    // Parse the diff string into an array of file diffs
+    const parsedDiffs = parsePatch(response.diff);
+    console.log("parsedDiffs", parsedDiffs);
+
+    // Get the incident file path
+    const incidentFilePath = vscode.Uri.parse(incidentUri).fsPath;
+    console.log("incidentFilePath", incidentFilePath);
+
+    // Get the workspace root path
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      console.log("No workspace folder is open.");
+      throw new Error("No workspace folder is open.");
+    }
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    console.log("workspaceRoot", workspaceRoot);
+
+    // Get the relative path of the incident file
+    const incidentRelativePath = path.relative(workspaceRoot, incidentFilePath).replace(/\\/g, "/");
+    console.log("incidentRelativePath", incidentRelativePath);
+
+    // Filter diffs that match the incident relative path
+    const filteredDiffs = parsedDiffs.filter((fileDiff) => {
+      const oldFileName = fileDiff?.oldFileName?.replace(/^a\//, "").replace(/\\/g, "/");
+      const newFileName = fileDiff?.newFileName?.replace(/^b\//, "").replace(/\\/g, "/");
+
+      // Compare relative paths
+      return oldFileName === incidentRelativePath || newFileName === incidentRelativePath;
+    });
+    console.log("filteredDiffs", filteredDiffs);
+    // If no diffs match, return an empty diff and modified_files array
+    if (filteredDiffs.length === 0) {
+      return {
+        diff: "",
+        encountered_errors: response.encountered_errors,
+        modified_files: [],
+      };
+    }
+    console.log("filteredDiffs", filteredDiffs);
+
+    // Reconstruct the diff string from filtered diffs
+    const filteredDiffString = formatPatch(filteredDiffs);
+
+    // Update the modified_files array
+    // const modifiedFiles = filteredDiffs.map((fileDiff) => {
+    //   const newFileName = fileDiff.newFileName?.replace(/^b\//, "").replace(/\\/g, "/");
+    //   const fullPath = path.join(workspaceRoot, newFileName || "");
+    //   return fullPath;
+    // });
+    // console.log("modifiedFiles", modifiedFiles);
+
+    return {
+      diff: filteredDiffString,
+      encountered_errors: response.encountered_errors,
+      modified_files: response.modified_files,
+    };
+  }
+
   public async getSolution(
     state: ExtensionState,
     incident: Incident,
@@ -251,18 +311,21 @@ export class AnalyzerClient {
     }
 
     this.fireSolutionStateChange(true);
-
+    console.log("incident", incident);
+    console.log("violation", violation);
+    console.log("state", state);
     const enhancedIncident = {
       ...incident,
       ruleset_name: violation.category || "default_ruleset", // You may adjust the default value as necessary
       violation_name: violation.description || "default_violation", // You may adjust the default value as necessary
     };
+    console.log("enhancedIncident", enhancedIncident);
 
     try {
       const response: SolutionResponse = await this.rpcConnection!.sendRequest(
         "getCodeplanAgentSolution",
         {
-          file_path: "",
+          file_path: incident.uri,
           incidents: [enhancedIncident],
           max_priority: 0,
           max_depth: 0,
@@ -270,7 +333,11 @@ export class AnalyzerClient {
         },
       );
 
-      vscode.commands.executeCommand("konveyor.loadSolution", response, {
+      console.log("response", response);
+      const filteredResponse = this.filterSolutionResponse(response, incident.uri);
+      console.log("filteredResponse", filteredResponse);
+
+      vscode.commands.executeCommand("konveyor.loadSolution", filteredResponse, {
         incident,
         violation,
       });
@@ -479,13 +546,6 @@ export class AnalyzerClient {
     return `log_level = "info"
 file_log_level = "debug"
 log_dir = "${log_dir}"
-
-[models]
-provider = "ChatIBMGenAI
-
-[models.args]
-model_id = "meta-llama/llama-3-70b-instruct"
-parameters.max_new_tokens = "2048"
 
 `;
   }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { EmptyState, EmptyStateBody, Spinner } from "@patternfly/react-core";
+import spacing from "@patternfly/react-styles/css/utilities/Spacing/spacing";
 
 const thoughtMessages = [
   "Analyzing your code...",
@@ -24,7 +25,7 @@ export const LoadingScreen: React.FC = () => {
   }, []);
 
   return (
-    <EmptyState variant="lg" icon={Spinner}>
+    <EmptyState variant="lg" icon={Spinner} className={spacing.mtSm}>
       <EmptyStateBody>
         <div className="pf-v5-u-my-xl">
           <span className="pf-v5-u-font-size-lg">{thoughtMessages[currentMessage]}</span>

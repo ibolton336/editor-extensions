@@ -58,11 +58,15 @@ const doLoadSolution = async (
   solution?: Immutable<Solution>,
   scope?: Immutable<Scope>,
 ) => {
-  state.memFs.removeAll(KONVEYOR_SCHEME);
+  await state.memFs.removeAll(KONVEYOR_SCHEME);
   await writeSolutionsToMemFs(localChanges, state);
   state.mutateData((draft) => {
     draft.localChanges = localChanges;
     draft.solutionData = castDraft(solution);
     draft.solutionScope = castDraft(scope);
+
+    console.log("Updated draft.localChanges:", draft.localChanges);
+    console.log("Updated draft.solutionData:", draft.solutionData);
+    console.log("Updated draft.solutionScope:", draft.solutionScope);
   });
 };
