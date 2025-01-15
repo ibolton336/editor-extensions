@@ -611,7 +611,7 @@ export class AnalyzerClient {
 
     return {
       ...process.env,
-      GENAI_KEY: genAiKey,
+      api_key: genAiKey,
     };
   }
 
