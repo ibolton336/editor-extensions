@@ -74,6 +74,7 @@ class VsCodeExtension {
       } as ExtensionData,
       () => {},
     );
+
     const getData = () => this.data;
     const setData = (data: Immutable<ExtensionData>) => {
       this.data = data;
@@ -121,7 +122,6 @@ class VsCodeExtension {
 
           try {
             this.state.workflowManager.workflow = new KaiInteractiveWorkflow();
-            // Make sure fsCache and solutionServerClient are passed to the workflow init
             await this.state.workflowManager.workflow.init({
               ...config,
               fsCache: this.state.kaiFsCache,
@@ -130,10 +130,9 @@ class VsCodeExtension {
             this.state.workflowManager.isInitialized = true;
           } catch (error) {
             console.error("Failed to initialize workflow:", error);
-            // Reset state on initialization failure to avoid inconsistent state
             this.state.workflowManager.workflow = undefined;
             this.state.workflowManager.isInitialized = false;
-            throw error; // Re-throw to let caller handle the error
+            throw error;
           }
         },
         getWorkflow: () => {
@@ -143,25 +142,17 @@ class VsCodeExtension {
           return this.state.workflowManager.workflow;
         },
         dispose: () => {
-          try {
-            // Clean up workflow resources if workflow exists
-            if (this.state.workflowManager.workflow) {
-              // Remove all event listeners to prevent memory leaks
-              this.state.workflowManager.workflow.removeAllListeners();
+          if (this.state.workflowManager.workflow) {
+            this.state.workflowManager.workflow.removeAllListeners();
 
-              // Clear any pending user interactions
-              const workflow = this.state.workflowManager.workflow as any;
-              if (workflow.userInteractionPromises) {
-                workflow.userInteractionPromises.clear();
-              }
+            const workflow = this.state.workflowManager.workflow as any;
+            if (workflow.userInteractionPromises) {
+              workflow.userInteractionPromises.clear();
             }
-          } catch (error) {
-            console.error("Error during workflow cleanup:", error);
-          } finally {
-            // Always reset state regardless of cleanup success/failure
-            this.state.workflowManager.workflow = undefined;
-            this.state.workflowManager.isInitialized = false;
           }
+
+          this.state.workflowManager.workflow = undefined;
+          this.state.workflowManager.isInitialized = false;
         },
       },
     };
@@ -176,9 +167,7 @@ class VsCodeExtension {
       const allProfiles = [...bundled, ...user];
 
       const storedActiveId = this.context.workspaceState.get<string>("activeProfileId");
-
       const matchingProfile = allProfiles.find((p) => p.id === storedActiveId);
-
       const activeProfileId =
         matchingProfile?.id ?? (allProfiles.length > 0 ? allProfiles[0].id : null);
 
@@ -194,12 +183,13 @@ class VsCodeExtension {
       this.registerCommands();
       this.registerLanguageProviders();
       this.checkContinueInstalled();
+
       this.state.solutionServerClient.connect().catch((error) => {
         console.error("Error connecting to solution server:", error);
       });
+
       this.checkJavaExtensionInstalled();
 
-      // Listen for extension changes to update Continue installation status and Java extension status
       this.listeners.push(
         vscode.extensions.onDidChange(() => {
           this.checkContinueInstalled();
@@ -208,8 +198,6 @@ class VsCodeExtension {
       );
 
       registerAnalysisTrigger(this.listeners, this.state);
-
-      // Removed decorator-related editor change listener since we're using merge editor now
 
       this.listeners.push(
         vscode.workspace.onDidSaveTextDocument((doc) => {
@@ -229,6 +217,7 @@ class VsCodeExtension {
               draft.solutionEffort = effort;
             });
           }
+
           if (event.affectsConfiguration("konveyor.kai.agentMode")) {
             const agentMode = getConfigAgentMode();
             this.state.mutateData((draft) => {
@@ -298,9 +287,7 @@ class VsCodeExtension {
       vscode.window.registerWebviewViewProvider(
         KonveyorGUIWebviewViewProvider.PROFILES_VIEW_TYPE,
         profilesViewProvider,
-        {
-          webviewOptions: { retainContextWhenHidden: true },
-        },
+        { webviewOptions: { retainContextWhenHidden: true } },
       ),
     );
   }
@@ -308,25 +295,21 @@ class VsCodeExtension {
   private registerCommands(): void {
     try {
       registerAllCommands(this.state);
-      // Removed registerSuggestionCommands since we're using merge editor now
     } catch (error) {
       console.error("Critical error during command registration:", error);
       vscode.window.showErrorMessage(
         `Konveyor extension failed to register commands properly. The extension may not function correctly. Error: ${error instanceof Error ? error.message : String(error)}`,
       );
-      // Re-throw to indicate the extension is not in a good state
       throw error;
     }
   }
 
   private registerLanguageProviders(): void {
     const documentSelectors: vscode.DocumentSelector = [
-      // Language IDs
       "java",
       "yaml",
       "properties",
-      "groovy", // for Gradle files
-      // Specific file patterns
+      "groovy",
       { pattern: "**/pom.xml" },
       { pattern: "**/build.gradle" },
       { pattern: "**/build.gradle.kts" },
@@ -376,23 +359,18 @@ class VsCodeExtension {
   }
 
   public async dispose() {
-    // Clean up pending interactions and resolver function to prevent memory leaks
     this.state.resolvePendingInteraction = undefined;
     this.state.isWaitingForUserInteraction = false;
 
-    // Dispose workflow manager
-    if (this.state.workflowManager && this.state.workflowManager.dispose) {
-      try {
-        this.state.workflowManager.dispose();
-      } catch (error) {
-        console.error("Error disposing workflow manager:", error);
-      }
+    if (this.state.workflowManager?.dispose) {
+      this.state.workflowManager.dispose();
     }
 
     await this.state.analyzerClient?.stop();
     await this.state.solutionServerClient?.disconnect().catch((error) => {
       console.error("Error disconnecting from solution server:", error);
     });
+
     const disposables = this.listeners.splice(0, this.listeners.length);
     for (const disposable of disposables) {
       disposable.dispose();
@@ -405,15 +383,6 @@ let extension: VsCodeExtension | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   try {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-      // Now we could theoretically create an extension with a no-workspace error instead of throwing
-      // This demonstrates the flexibility of the new configErrors approach:
-      //
-      // const extension = new VsCodeExtension({ workspaceRepo: "" }, context);
-      // extension.state.mutateData((draft) => {
-      //   draft.configErrors.push(createConfigError.noWorkspace());
-      // });
-      // return;
-
       throw new Error("Please open a workspace folder before using this extension.");
     }
 
@@ -427,11 +396,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     extension = undefined;
     console.error("Failed to activate Konveyor extension:", error);
     vscode.window.showErrorMessage(`Failed to activate Konveyor extension: ${error}`);
-    throw error; // Re-throw to ensure VS Code marks the extension as failed to activate
+    throw error;
   }
 }
 
 export async function deactivate(): Promise<void> {
-  // Removed decorator disposal since we're using merge editor now
   await extension?.dispose();
 }

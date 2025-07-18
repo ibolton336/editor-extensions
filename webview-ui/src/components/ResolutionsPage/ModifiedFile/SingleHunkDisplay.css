@@ -1,0 +1,72 @@
+/* Single Hunk Display Styling */
+.single-hunk-display {
+  padding: 1rem;
+  min-height: 300px;
+  background-color: var(--vscode-editor-background);
+}
+
+.single-hunk-content {
+  border-radius: 8px;
+  border: 2px solid var(--vscode-editorIndentGuide-background);
+  background-color: var(--vscode-editor-background);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  padding: 1.25rem;
+}
+
+.single-hunk-content:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Style the diff content within single hunk */
+.single-hunk-content .diff-line {
+  border-radius: 3px;
+  padding: 0.125rem 0.5rem;
+  margin: 0.125rem 0;
+  transition: background-color 0.2s ease;
+  color: var(--vscode-editor-foreground);
+}
+
+.single-hunk-content .diff-line:hover {
+  background-color: var(--vscode-editor-hoverHighlightBackground);
+}
+
+/* Enhanced diff line styling for better readability */
+.single-hunk-content .diff-line.addition {
+  background-color: var(--vscode-diffEditor-insertedTextBackground);
+  border-left: 3px solid var(--vscode-editorGutter-addedBackground);
+}
+
+.single-hunk-content .diff-line.deletion {
+  background-color: var(--vscode-diffEditor-removedTextBackground);
+  border-left: 3px solid var(--vscode-editorGutter-deletedBackground);
+}
+
+.single-hunk-content .diff-line.context {
+  background-color: var(--vscode-editor-lineHighlightBackground);
+  border-left: 3px solid var(--vscode-editorLineNumber-foreground);
+}
+
+.single-hunk-content .diff-line.meta {
+  background-color: var(--vscode-editor-wordHighlightBackground);
+  border-left: 3px solid var(--vscode-editorIndentGuide-activeBackground);
+  font-weight: 600;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .single-hunk-display {
+    padding: 0.5rem;
+  }
+
+  .single-hunk-content {
+    padding: 1rem;
+  }
+
+  .single-hunk-content .diff-legend {
+    padding: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+}

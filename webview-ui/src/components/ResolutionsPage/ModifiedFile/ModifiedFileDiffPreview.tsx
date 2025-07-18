@@ -3,19 +3,22 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
-import { getLanguageFromExtension } from "../../../../../shared/src/utils/languageMapping";
+import { detectLanguage } from "../../../../../shared/src/utils/languageMapping";
+
+// Re-enabling CSS import to test if this breaks re-rendering
+import "./enhancedSyntaxHighlighting.css";
 
 interface ModifiedFileDiffPreviewProps {
   diff: string;
   path: string;
+  content?: string; // Optional full file content for better language detection
 }
 
-export const ModifiedFileDiffPreview: React.FC<ModifiedFileDiffPreviewProps> = ({ diff, path }) => {
-  const getLanguage = (filePath: string): string => {
-    const ext = filePath.split(".").pop()?.toLowerCase() || "";
-    return getLanguageFromExtension(ext);
-  };
-
+export const ModifiedFileDiffPreview: React.FC<ModifiedFileDiffPreviewProps> = ({
+  diff,
+  path,
+  content,
+}) => {
   const formatDiffForMarkdown = (diffContent: string, fileName: string) => {
     try {
       const lines = diffContent.split("\n");
@@ -43,45 +46,69 @@ export const ModifiedFileDiffPreview: React.FC<ModifiedFileDiffPreviewProps> = (
         }
       }
 
-      if (!formattedDiff) {
+      if (!formattedDiff.trim()) {
         formattedDiff = `// No diff content available for ${fileName}`;
       }
 
       return "```diff\n" + formattedDiff + "\n```";
-    } catch {
+    } catch (error) {
+      console.error("Error formatting diff for markdown:", error);
       return `\`\`\`\n// Error parsing diff content for ${fileName}\n\`\`\``;
     }
   };
 
-  const language = getLanguage(path);
+  const detectedLanguage = detectLanguage(path, content);
   const fileName =
     path && typeof path === "string" && path.trim() !== ""
       ? path.split("/").pop() || path
       : "Unnamed File";
   const markdownContent = formatDiffForMarkdown(diff, fileName);
 
-  return (
-    <div className="modified-file-diff">
-      <div className="markdown-diff">
-        <ReactMarkdown
-          rehypePlugins={[
-            rehypeRaw,
-            rehypeSanitize,
-            [
-              rehypeHighlight,
-              {
-                ignoreMissing: true,
-                detect: true,
-                language: language,
-              },
-            ],
-          ]}
-        >
-          {markdownContent}
-        </ReactMarkdown>
+  try {
+    return (
+      <div className="modified-file-diff">
+        <div className="markdown-diff">
+          <ReactMarkdown
+            rehypePlugins={[
+              rehypeRaw,
+              rehypeSanitize,
+              [
+                rehypeHighlight,
+                {
+                  ignoreMissing: true,
+                  detect: true,
+                  language: detectedLanguage || "plaintext",
+                },
+              ],
+            ]}
+          >
+            {markdownContent}
+          </ReactMarkdown>
+        </div>
       </div>
-    </div>
-  );
+    );
+  } catch (error) {
+    console.error("Error rendering ModifiedFileDiffPreview:", error);
+    // Fallback rendering without markdown processing
+    return (
+      <div className="modified-file-diff">
+        <div className="markdown-diff">
+          <pre
+            style={{
+              fontFamily: "monospace",
+              whiteSpace: "pre-wrap",
+              padding: "1rem",
+              backgroundColor: "var(--pf-global--BackgroundColor--200)",
+              border: "1px solid var(--pf-global--BorderColor--100)",
+              borderRadius: "4px",
+            }}
+          >
+            {diff || "No diff content available"}
+          </pre>
+        </div>
+      </div>
+    );
+  }
 };
 
 export default ModifiedFileDiffPreview;

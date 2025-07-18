@@ -2,16 +2,19 @@
 export const LANGUAGE_MAP: { [key: string]: string } = {
   // JavaScript & TypeScript
   js: "javascript",
-  jsx: "javascript",
-  ts: "typescript",
-  tsx: "typescript",
   mjs: "javascript",
   cjs: "javascript",
+  jsx: "javascript",
+  ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  tsx: "typescript",
 
   // Python
   py: "python",
   pyx: "python",
   pyi: "python",
+  pyw: "python",
 
   // Java & JVM Languages
   java: "java",

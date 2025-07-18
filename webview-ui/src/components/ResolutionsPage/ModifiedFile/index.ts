@@ -3,7 +3,6 @@
 export { ModifiedFileModal } from "./ModifiedFileModal";
 export { ModifiedFileDiffPreview } from "./ModifiedFileDiffPreview";
 export { DiffLinesRenderer } from "./DiffLinesRenderer";
-export { EnhancedDiffRenderer } from "./EnhancedDiffRenderer";
 export { DiffLegend } from "./DiffLegend";
 export { HunkSelectionInterface } from "./HunkSelectionInterface";
 export { ModifiedFileHeader } from "./ModifiedFileHeader";

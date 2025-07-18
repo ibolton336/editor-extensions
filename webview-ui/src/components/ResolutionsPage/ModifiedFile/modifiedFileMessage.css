@@ -1485,3 +1485,27 @@
     transform: translateX(0);
   }
 }
+
+/* Partial apply badge styling */
+.partial-apply-badge {
+  margin-left: 0.5rem;
+  background-color: var(--pf-global--warning-color--100);
+  color: var(--pf-global--Color--light-100);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.partial-apply-badge:hover {
+  background-color: var(--pf-global--warning-color--200);
+}
+
+.vscode-dark .partial-apply-badge {
+  background-color: var(--pf-global--warning-color--200);
+  color: var(--pf-global--Color--dark-100);
+}
+
+.vscode-dark .partial-apply-badge:hover {
+  background-color: var(--pf-global--warning-color--300);
+}

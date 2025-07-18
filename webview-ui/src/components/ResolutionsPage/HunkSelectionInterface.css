@@ -1,0 +1,288 @@
+/* Hunk Selection Interface Styling */
+.hunk-selection-interface {
+  padding: 1rem;
+  background-color: var(--vscode-editor-background);
+}
+
+.hunk-selection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--vscode-editorIndentGuide-background);
+}
+
+.hunk-selection-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--vscode-editor-foreground);
+}
+
+.hunk-count {
+  font-size: 0.875rem;
+  color: var(--vscode-editorLineNumber-foreground);
+  background-color: var(--vscode-editor-lineHighlightBackground);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--vscode-editorIndentGuide-background);
+}
+
+/* Hunk Item Base Styling */
+.hunk-item {
+  margin-bottom: 1.5rem;
+  border-radius: 8px;
+  border: 2px solid;
+  background-color: var(--vscode-editor-background);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.hunk-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Hunk State Styling */
+.hunk-item.hunk-pending {
+  border-color: var(--vscode-editorIndentGuide-background);
+  background-color: var(--vscode-editor-background);
+}
+
+.hunk-item.hunk-pending:hover {
+  border-color: var(--vscode-editorIndentGuide-activeBackground);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.hunk-item.hunk-accepted {
+  border-color: var(--vscode-editorGutter-addedBackground);
+  background-color: var(--vscode-editor-background);
+}
+
+.hunk-item.hunk-accepted:hover {
+  border-color: var(--vscode-editorGutter-addedBackground);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.hunk-item.hunk-rejected {
+  border-color: var(--vscode-errorForeground);
+  background-color: var(--vscode-editor-background);
+}
+
+.hunk-item.hunk-rejected:hover {
+  border-color: var(--vscode-errorForeground);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Hunk Header */
+.hunk-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background-color: var(--vscode-editor-lineHighlightBackground);
+  border-bottom: 1px solid var(--vscode-editorIndentGuide-background);
+}
+
+.hunk-accepted .hunk-item-header {
+  border-bottom-color: var(--vscode-editorGutter-addedBackground);
+}
+
+.hunk-rejected .hunk-item-header {
+  border-bottom-color: var(--vscode-errorForeground);
+}
+
+.hunk-pending .hunk-item-header {
+  border-bottom-color: var(--vscode-editorIndentGuide-background);
+}
+
+/* Hunk Info Section */
+.hunk-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+.hunk-number {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--vscode-editor-foreground);
+  background-color: var(--vscode-editorIndentGuide-background);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-editorIndentGuide-activeBackground);
+}
+
+.hunk-accepted .hunk-number {
+  background-color: var(--vscode-diffEditor-insertedTextBackground);
+  color: var(--vscode-editorGutter-addedBackground);
+  border-color: var(--vscode-editorGutter-addedBackground);
+}
+
+.hunk-rejected .hunk-number {
+  background-color: var(--vscode-diffEditor-removedTextBackground);
+  color: var(--vscode-errorForeground);
+  border-color: var(--vscode-errorForeground);
+}
+
+.hunk-pending .hunk-number {
+  background-color: var(--vscode-editor-wordHighlightBackground);
+  color: var(--vscode-editor-foreground);
+  border-color: var(--vscode-editorIndentGuide-activeBackground);
+}
+
+.hunk-description {
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  font-size: 0.8rem;
+  color: var(--vscode-editorLineNumber-foreground);
+  background-color: var(--vscode-editor-lineHighlightBackground);
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid var(--vscode-editorIndentGuide-background);
+  flex: 1;
+}
+
+/* Status Badge */
+.hunk-status-badge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.15rem 0.4rem;
+  border-radius: 8px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background-color: var(--vscode-editor-lineHighlightBackground);
+}
+
+.hunk-status-badge.hunk-pending {
+  color: var(--vscode-editorLineNumber-foreground);
+}
+
+.hunk-status-badge.hunk-accepted {
+  color: var(--vscode-editorGutter-addedBackground);
+}
+
+.hunk-status-badge.hunk-rejected {
+  color: var(--vscode-errorForeground);
+}
+
+/* Hunk Controls */
+.hunk-controls {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding-left: 0.5rem;
+}
+
+.hunk-controls .pf-v5-c-button {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  font-weight: 500;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+  box-shadow: none;
+  border: 1px solid transparent;
+}
+
+.hunk-controls .pf-v5-c-button--m-primary {
+  background-color: transparent;
+  color: var(--vscode-editorGutter-addedBackground);
+  border-color: var(--vscode-editorGutter-addedBackground);
+}
+
+.hunk-controls .pf-v5-c-button--m-secondary {
+  background-color: transparent;
+  color: var(--vscode-editorLineNumber-foreground);
+  border-color: var(--vscode-editorIndentGuide-background);
+}
+
+.hunk-controls .pf-v5-c-button--m-danger {
+  background-color: transparent;
+  color: var(--vscode-errorForeground);
+  border-color: var(--vscode-errorForeground);
+}
+
+.hunk-controls .pf-v5-c-button:hover {
+  transform: none;
+  opacity: 0.8;
+}
+
+.hunk-button-selected.pf-v5-c-button--m-primary {
+  background-color: var(--vscode-editorGutter-addedBackground);
+  color: var(--vscode-editor-background);
+}
+
+.hunk-button-selected.pf-v5-c-button--m-danger {
+  background-color: var(--vscode-errorForeground);
+  color: var(--vscode-editor-background);
+}
+
+.hunk-reset-button {
+  opacity: 0.6;
+  font-size: 0.7rem !important;
+  padding: 0.2rem 0.4rem !important;
+  text-decoration: none !important;
+  color: var(--vscode-editorLineNumber-foreground) !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.hunk-reset-button:hover {
+  opacity: 1;
+  text-decoration: underline !important;
+  color: var(--vscode-editor-foreground) !important;
+}
+
+/* Hunk Content */
+.hunk-content {
+  padding: 1rem 1.25rem;
+  background-color: var(--vscode-editor-background);
+}
+
+/* Animations */
+@keyframes hunkStateChange {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.hunk-item {
+  animation: hunkStateChange 0.3s ease when state changes;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .hunk-item-header {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+
+  .hunk-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .hunk-controls {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+
+  .hunk-controls .pf-v5-c-button {
+    flex: 1;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+  }
+}

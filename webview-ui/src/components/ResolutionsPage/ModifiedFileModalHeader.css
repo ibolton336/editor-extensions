@@ -1,0 +1,157 @@
+/* Modal Header Layout */
+.modal-custom-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--vscode-editorIndentGuide-background);
+  background-color: var(--vscode-editor-background);
+  min-height: 64px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.modal-custom-header .pf-v5-l-flex {
+  align-items: center;
+  width: 100%;
+}
+
+/* Title Section */
+.modal-title-section {
+  flex: 1;
+  min-width: 0; /* Allow text truncation */
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modal-filename {
+  font-family:
+    "SF Mono", "Monaco", "Inconsolata", "Fira Code", "Fira Mono", "Droid Sans Mono", "Consolas",
+    monospace;
+  background-color: var(--vscode-editor-lineHighlightBackground);
+  color: var(--vscode-editorLink-activeForeground);
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.9em;
+  border: 1px solid var(--vscode-editorIndentGuide-background);
+}
+
+/* Button Styling */
+.modal-custom-header .pf-v5-c-button {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  font-weight: 500;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  box-shadow: none;
+  border: 1px solid transparent;
+}
+
+.modal-custom-header .pf-v5-c-button:hover {
+  transform: none;
+  opacity: 0.8;
+}
+
+.modal-custom-header .pf-v5-c-button--m-primary {
+  background-color: var(--vscode-editorLink-activeForeground);
+  border-color: var(--vscode-editorLink-activeForeground);
+  color: var(--vscode-editor-background);
+}
+
+.modal-custom-header .pf-v5-c-button--m-secondary {
+  background-color: transparent;
+  border-color: var(--vscode-editorIndentGuide-background);
+  color: var(--vscode-editorLineNumber-foreground);
+}
+
+.modal-custom-header .pf-v5-c-button--m-danger {
+  background-color: transparent;
+  border-color: var(--vscode-errorForeground);
+  color: var(--vscode-errorForeground);
+}
+
+.modal-custom-header .pf-v5-c-button:disabled {
+  background-color: transparent !important;
+  border-color: var(--vscode-editorIndentGuide-background) !important;
+  color: var(--vscode-editorLineNumber-foreground) !important;
+  cursor: not-allowed;
+  opacity: 0.5 !important;
+}
+
+/* Action Status */
+.action-status {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.action-status.applied {
+  color: var(--vscode-editorGutter-addedBackground);
+  background-color: var(--vscode-diffEditor-insertedTextBackground);
+  border: 1px solid var(--vscode-editorGutter-addedBackground);
+}
+
+.action-status.rejected {
+  color: var(--vscode-errorForeground);
+  background-color: var(--vscode-diffEditor-removedTextBackground);
+  border: 1px solid var(--vscode-errorForeground);
+}
+
+/* Hunk Progress Indicator */
+.hunk-progress {
+  margin-left: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.progress-complete {
+  color: var(--vscode-editorGutter-addedBackground);
+  background-color: var(--vscode-diffEditor-insertedTextBackground);
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-editorGutter-addedBackground);
+}
+
+.progress-pending {
+  color: var(--vscode-editor-foreground);
+  background-color: var(--vscode-editor-wordHighlightBackground);
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-editorIndentGuide-activeBackground);
+}
+
+/* Button spacing */
+.modal-custom-header .pf-v5-l-flex > .pf-v5-l-flex__item:not(:last-child) {
+  margin-right: 0.5rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .modal-custom-header {
+    padding: 0.5rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: auto;
+  }
+
+  .modal-custom-header .pf-v5-l-flex {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .modal-custom-header .pf-v5-c-button {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
+  }
+}

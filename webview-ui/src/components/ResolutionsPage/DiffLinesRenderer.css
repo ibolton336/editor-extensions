@@ -1,0 +1,321 @@
+/* Diff Lines Renderer Styling */
+.diff-line {
+  display: flex;
+  align-items: flex-start;
+  font-family:
+    "SF Mono", "Monaco", "Inconsolata", "Fira Code", "Fira Mono", "Droid Sans Mono", "Consolas",
+    monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 0.1rem 0;
+  border-radius: 2px;
+  color: var(--vscode-editor-foreground);
+  background-color: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.diff-line:hover {
+  background-color: var(--vscode-editor-hoverHighlightBackground);
+}
+
+.diff-line-number {
+  min-width: 3rem;
+  padding: 0 0.5rem;
+  text-align: right;
+  color: var(--vscode-editorLineNumber-foreground);
+  font-size: 0.75rem;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.diff-content {
+  padding-left: 0.5rem;
+  flex: 1;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Diff Line Types */
+.diff-line.addition {
+  background-color: var(--vscode-diffEditor-insertedTextBackground);
+  border-left: 3px solid var(--vscode-editorGutter-addedBackground);
+}
+
+.diff-line.addition .diff-line-number {
+  background-color: var(--vscode-editorGutter-addedBackground);
+  color: var(--vscode-editor-background);
+}
+
+.diff-line.deletion {
+  background-color: var(--vscode-diffEditor-removedTextBackground);
+  border-left: 3px solid var(--vscode-editorGutter-deletedBackground);
+}
+
+.diff-line.deletion .diff-line-number {
+  background-color: var(--vscode-editorGutter-deletedBackground);
+  color: var(--vscode-editor-background);
+}
+
+.diff-line.context {
+  border-left: 3px solid transparent;
+}
+
+.diff-line.meta {
+  background-color: var(--vscode-editor-wordHighlightBackground);
+  border-left: 3px solid var(--vscode-editorIndentGuide-activeBackground);
+  font-weight: 600;
+  color: var(--vscode-editor-foreground);
+}
+
+/* Enhanced VS Code-style Syntax Highlighting */
+.diff-content .hljs {
+  background: transparent !important;
+  display: inline !important;
+  padding: 0 !important;
+}
+
+/* Keywords and Control Flow */
+.diff-content .hljs-keyword {
+  color: #569cd6;
+  font-weight: 600;
+}
+
+.diff-content .hljs-built_in {
+  color: #569cd6;
+}
+
+.diff-content .hljs-type {
+  color: #4ec9b0;
+}
+
+.diff-content .hljs-literal {
+  color: #569cd6;
+}
+
+/* Strings and Characters */
+.diff-content .hljs-string {
+  color: #ce9178;
+}
+
+.diff-content .hljs-char {
+  color: #ce9178;
+}
+
+.diff-content .hljs-template-string {
+  color: #ce9178;
+}
+
+.diff-content .hljs-regexp {
+  color: #d16969;
+}
+
+/* Numbers and Constants */
+.diff-content .hljs-number {
+  color: #b5cea8;
+}
+
+.diff-content .hljs-boolean {
+  color: #569cd6;
+}
+
+.diff-content .hljs-null {
+  color: #569cd6;
+}
+
+.diff-content .hljs-undefined {
+  color: #569cd6;
+}
+
+/* Functions and Methods */
+.diff-content .hljs-function {
+  color: #dcdcaa;
+}
+
+.diff-content .hljs-title {
+  color: #dcdcaa;
+}
+
+.diff-content .hljs-name {
+  color: #dcdcaa;
+}
+
+/* Variables and Identifiers */
+.diff-content .hljs-variable {
+  color: #9cdcfe;
+}
+
+.diff-content .hljs-property {
+  color: #9cdcfe;
+}
+
+.diff-content .hljs-attr {
+  color: #9cdcfe;
+}
+
+.diff-content .hljs-attribute {
+  color: #92c5f8;
+}
+
+/* Classes and Interfaces */
+.diff-content .hljs-class {
+  color: #4ec9b0;
+}
+
+.diff-content .hljs-interface {
+  color: #4ec9b0;
+}
+
+.diff-content .hljs-struct {
+  color: #4ec9b0;
+}
+
+.diff-content .hljs-enum {
+  color: #4ec9b0;
+}
+
+/* Comments and Documentation */
+.diff-content .hljs-comment {
+  color: #6a9955;
+  font-style: italic;
+}
+
+.diff-content .hljs-doc {
+  color: #6a9955;
+  font-style: italic;
+}
+
+.diff-content .hljs-doctag {
+  color: #569cd6;
+  font-style: italic;
+}
+
+/* Operators and Punctuation */
+.diff-content .hljs-operator {
+  color: var(--vscode-editor-foreground);
+}
+
+.diff-content .hljs-punctuation {
+  color: var(--vscode-editor-foreground);
+}
+
+.diff-content .hljs-symbol {
+  color: var(--vscode-editor-foreground);
+}
+
+/* HTML/XML specific */
+.diff-content .hljs-tag {
+  color: #569cd6;
+}
+
+.diff-content .hljs-tag .hljs-name {
+  color: #569cd6;
+}
+
+.diff-content .hljs-tag .hljs-attr {
+  color: #92c5f8;
+}
+
+/* CSS specific */
+.diff-content .hljs-selector-id {
+  color: #d7ba7d;
+}
+
+.diff-content .hljs-selector-class {
+  color: #d7ba7d;
+}
+
+.diff-content .hljs-selector-tag {
+  color: #569cd6;
+}
+
+.diff-content .hljs-property {
+  color: #9cdcfe;
+}
+
+.diff-content .hljs-value {
+  color: #ce9178;
+}
+
+/* JSON specific */
+.diff-content .hljs-attr {
+  color: #9cdcfe;
+}
+
+.diff-content .hljs-string {
+  color: #ce9178;
+}
+
+/* Shell/Bash specific */
+.diff-content .hljs-built_in {
+  color: #569cd6;
+}
+
+.diff-content .hljs-variable {
+  color: #9cdcfe;
+}
+
+/* Python specific */
+.diff-content .hljs-decorator {
+  color: #569cd6;
+}
+
+.diff-content .hljs-meta {
+  color: #569cd6;
+}
+
+/* Java specific */
+.diff-content .hljs-annotation {
+  color: #569cd6;
+}
+
+.diff-content .hljs-modifier {
+  color: #569cd6;
+}
+
+/* Enhanced highlighting for special tokens */
+.diff-content .hljs-emphasis {
+  font-style: italic;
+}
+
+.diff-content .hljs-strong {
+  font-weight: 700;
+}
+
+.diff-content .hljs-link {
+  color: #569cd6;
+  text-decoration: underline;
+}
+
+/* Improve readability for diff context */
+.diff-line.addition .diff-content .hljs-comment {
+  color: #4a7c1a;
+}
+
+.diff-line.deletion .diff-content .hljs-comment {
+  color: #b85450;
+}
+
+.diff-line.addition .diff-content .hljs-string {
+  color: #a67f5b;
+}
+
+.diff-line.deletion .diff-content .hljs-string {
+  color: #c9967c;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .diff-line {
+    font-size: 0.75rem;
+  }
+
+  .diff-line-number {
+    min-width: 2.5rem;
+    padding: 0 0.25rem;
+    font-size: 0.7rem;
+  }
+
+  .diff-content {
+    padding-left: 0.25rem;
+  }
+}

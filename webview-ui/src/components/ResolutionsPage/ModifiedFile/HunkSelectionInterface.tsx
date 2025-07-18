@@ -105,18 +105,6 @@ export const HunkSelectionInterface: React.FC<HunkSelectionInterfaceProps> = ({
                           Reject
                         </Button>
                       </FlexItem>
-                      <FlexItem>
-                        {/* <Button
-                          variant={buttonVariants.pending}
-                          size="sm"
-                          icon={<MinusCircleIcon />}
-                          onClick={() => onHunkStateChange(hunk.id, 'pending')}
-                          isDisabled={isDisabled}
-                          title="Mark as pending (skip for now)"
-                        >
-                          Skip
-                        </Button> */}
-                      </FlexItem>
                     </Flex>
                   </div>
                 </FlexItem>

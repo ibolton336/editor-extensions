@@ -1,16 +1,18 @@
 import React from "react";
-import { CardTitle, Flex, FlexItem } from "@patternfly/react-core";
+import { CardTitle, Flex, FlexItem, Badge } from "@patternfly/react-core";
 
 interface ModifiedFileHeaderProps {
   isNew: boolean;
   fileName: string;
   timestamp?: string;
+  isPartialApply?: boolean;
 }
 
 export const ModifiedFileHeader: React.FC<ModifiedFileHeaderProps> = ({
   isNew,
   fileName,
   timestamp,
+  isPartialApply = false,
 }) => {
   const formattedTime = timestamp
     ? new Date(timestamp).toLocaleTimeString("en-US", {
@@ -25,6 +27,11 @@ export const ModifiedFileHeader: React.FC<ModifiedFileHeaderProps> = ({
       <Flex>
         <FlexItem grow={{ default: "grow" }}>
           {isNew ? "Created file:" : "Modified file:"} <strong>{fileName}</strong>
+          {isPartialApply && (
+            <Badge isRead className="partial-apply-badge">
+              Partial Apply
+            </Badge>
+          )}
         </FlexItem>
         {formattedTime && <FlexItem className="modified-file-timestamp">{formattedTime}</FlexItem>}
       </Flex>

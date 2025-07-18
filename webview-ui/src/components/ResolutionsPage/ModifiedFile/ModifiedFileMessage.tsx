@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Card, CardBody } from "@patternfly/react-core";
 import { ModifiedFileMessageValue, LocalChange } from "@editor-extensions/shared";
+import { createTwoFilesPatch } from "diff";
 import "./modifiedFileMessage.css";
 import ModifiedFileModal from "./ModifiedFileModal";
 import ModifiedFileHeader from "./ModifiedFileHeader";
@@ -27,9 +28,46 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
 }) => {
   // Use shared data normalization hook
   const normalizedData = useModifiedFileData(data);
-  const { path, isNew, diff, status, content, messageToken, fileName } = normalizedData;
+  const { path, isNew, diff, status, content, messageToken, fileName, originalContent } =
+    normalizedData;
   const [actionTaken, setActionTaken] = useState<"applied" | "rejected" | null>(status || null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedContent, setSelectedContent] = useState<string | null>(null);
+
+  // Generate diff that reflects only the selected/applied changes
+  const effectiveDiff = useMemo(() => {
+    // If no content was selected (full apply or reject), use original diff
+    if (selectedContent === null) {
+      return diff;
+    }
+
+    // If partial content was selected, generate a proper diff from original to selected content
+    if (originalContent && selectedContent !== originalContent) {
+      try {
+        // Use the diff library to create a proper patch
+        const patch = createTwoFilesPatch(
+          fileName,
+          fileName,
+          originalContent,
+          selectedContent,
+          undefined,
+          undefined,
+          { context: 3 },
+        );
+        return patch;
+      } catch (error) {
+        console.error("Error generating diff for selected content:", error);
+        // Fallback to original diff if patch generation fails
+        return diff;
+      }
+    }
+
+    return diff;
+  }, [diff, selectedContent, originalContent, fileName]);
+
+  // Determine if this is a partial apply (selected content differs from both original and full content)
+  const isPartialApply =
+    selectedContent !== null && selectedContent !== originalContent && selectedContent !== content;
 
   // Function to handle FILE_RESPONSE message posting (agent mode only)
   const postFileResponse = (
@@ -60,12 +98,15 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
     });
   };
 
-  const applyFile = (selectedContent?: string) => {
+  const applyFile = (appliedContent?: string) => {
     setActionTaken("applied");
     setIsExpanded(false);
 
-    // Use provided selected content or fall back to full content
-    const contentToApply = selectedContent || content;
+    // Use provided applied content or fall back to full content
+    const contentToApply = appliedContent || content;
+
+    // Track the selected content for diff generation
+    setSelectedContent(contentToApply);
 
     if (mode === "agent") {
       // Agent mode: Use FILE_RESPONSE flow for direct file writing
@@ -83,6 +124,8 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
   const rejectFile = () => {
     setActionTaken("rejected");
     setIsExpanded(false);
+    // Clear selected content when rejecting
+    setSelectedContent(null);
 
     if (mode === "agent") {
       // Agent mode: Use FILE_RESPONSE flow
@@ -106,7 +149,7 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
       }
       const payload: ShowMaximizedDiffPayload = {
         path: filePath,
-        content: content,
+        content: selectedContent || content,
         diff: fileDiff,
         messageToken: messageToken,
       };
@@ -131,6 +174,14 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
     const action = responseId === "apply" ? "applied" : "rejected";
     setActionTaken(action);
 
+    if (responseId === "apply") {
+      // For quick apply, use full content and clear selected content
+      setSelectedContent(null);
+    } else {
+      // For reject, clear selected content
+      setSelectedContent(null);
+    }
+
     if (mode === "agent") {
       // Agent mode: Use FILE_RESPONSE flow
       const contentToSend = responseId === "apply" ? content : undefined;
@@ -152,9 +203,18 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
     <>
       <div className="modified-file-message">
         <Card className="modified-file-card">
-          <ModifiedFileHeader isNew={isNew} fileName={fileName} timestamp={timestamp} />
+          <ModifiedFileHeader
+            isNew={isNew}
+            fileName={fileName}
+            timestamp={timestamp}
+            isPartialApply={isPartialApply}
+          />
           <CardBody>
-            <ModifiedFileDiffPreview diff={diff} path={path} />
+            <ModifiedFileDiffPreview
+              diff={effectiveDiff}
+              path={path}
+              content={selectedContent || content}
+            />
             <ModifiedFileActions
               actionTaken={actionTaken}
               mode={mode}

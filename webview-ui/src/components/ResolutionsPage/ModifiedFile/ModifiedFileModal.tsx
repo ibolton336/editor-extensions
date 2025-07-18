@@ -72,7 +72,7 @@ export const ModifiedFileModal: React.FC<ModifiedFileModalProps> = ({
   const parsedHunks = parsedDiff?.hunks || [];
   const [hunkStates, setHunkStates] = useState<Record<string, HunkState>>({});
 
-  // Update hunkStates when parsedHunks changes
+  // Update hunkStates when parsedHunks changes - start with no decisions made
   useEffect(() => {
     const newHunkStates: Record<string, HunkState> = {};
     parsedHunks.forEach((hunk) => {
@@ -198,7 +198,6 @@ export const ModifiedFileModal: React.FC<ModifiedFileModalProps> = ({
     return (
       <div className="expanded-diff-content">
         {parsedHunks.length <= 1 ? (
-          /* Single hunk or no hunks - show enhanced diff */
           <SingleHunkDisplay diff={diff} filePath={path} />
         ) : (
           /* Multiple hunks - show clean hunk selection interface */

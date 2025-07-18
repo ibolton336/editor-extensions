@@ -27,7 +27,6 @@ import { useExtensionStateContext } from "../../context/ExtensionStateContext";
 import { Chatbot, ChatbotContent, ChatbotDisplayMode, MessageBox } from "@patternfly/chatbot";
 import { ChatCard } from "./ChatCard/ChatCard";
 import LoadingIndicator from "./LoadingIndicator";
-import { useScrollManagement } from "../../hooks/useScrollManagement";
 import { MessageWrapper } from "./MessageWrapper";
 
 // Unified hook for both modes
@@ -211,8 +210,6 @@ const ResolutionPage: React.FC = () => {
     isAnalyzing,
     solutionState,
   } = useResolutionData(state);
-
-  const { messageBoxRef } = useScrollManagement(chatMessages, isFetchingSolution);
 
   // Event handlers
   const handleFileClick = (change: LocalChange) => dispatch(viewFix(change));
@@ -400,7 +397,7 @@ const ResolutionPage: React.FC = () => {
       </PageSection>
       <Chatbot displayMode={ChatbotDisplayMode.embedded}>
         <ChatbotContent>
-          <MessageBox ref={messageBoxRef} style={{ paddingBottom: "2rem" }}>
+          <MessageBox style={{ paddingBottom: "2rem" }}>
             {/* User request messages - shown in both modes when triggered by user */}
             {isTriggeredByUser && (
               <UserRequestMessages

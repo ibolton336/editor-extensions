@@ -35,7 +35,6 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
   onReject,
   onSelectAll,
 }) => {
-  // Generate status message for multi-hunk scenarios
   const getStatusMessage = () => {
     if (isSingleHunk || actionTaken !== null) {
       return null;
@@ -61,51 +60,34 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
     };
   };
 
-  const statusMessage = getStatusMessage();
-
-  // Generate submit button text and variant
   const getSubmitButtonInfo = () => {
     if (isSingleHunk) {
-      return {
-        text: "Apply Changes",
-        variant: "primary" as const,
-      };
+      return { text: "Apply Changes", variant: "primary" as const };
     }
 
     if (!canSubmit) {
-      return {
-        text: "Submit Changes",
-        variant: "primary" as const,
-      };
+      return { text: "Submit Changes", variant: "primary" as const };
     }
 
     const { accepted, rejected } = hunkSummary;
+    
     if (accepted > 0 && rejected === 0) {
-      return {
-        text: `Apply ${accepted} Changes`,
-        variant: "primary" as const,
-      };
+      return { text: `Apply ${accepted} Changes`, variant: "primary" as const };
     }
 
     if (accepted === 0 && rejected > 0) {
-      return {
-        text: "Submit Rejections",
-        variant: "secondary" as const,
-      };
+      return { text: "Submit Rejections", variant: "secondary" as const };
     }
 
-    return {
-      text: `Submit ${accepted + rejected} Decisions`,
-      variant: "primary" as const,
-    };
+    return { text: `Submit ${accepted + rejected} Decisions`, variant: "primary" as const };
   };
 
+  const statusMessage = getStatusMessage();
   const submitButtonInfo = getSubmitButtonInfo();
 
   return (
     <div className="modal-custom-header sticky-header">
       <div className="modal-header-content">
-        {/* Title Row */}
         <Flex
           className="modal-title-row"
           justifyContent={{ default: "justifyContentSpaceBetween" }}
@@ -120,7 +102,6 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
             </h2>
           </FlexItem>
 
-          {/* Close button */}
           <FlexItem className="modal-close-container">
             <Button
               variant="plain"
@@ -131,12 +112,10 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
           </FlexItem>
         </Flex>
 
-        {/* Status Alert */}
         {statusMessage && (
           <Alert variant={statusMessage.variant} title={statusMessage.text} isInline isPlain />
         )}
 
-        {/* Action Row */}
         {actionTaken === null && (
           <Flex
             className="modal-action-row"
@@ -144,7 +123,6 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
             alignItems={{ default: "alignItemsCenter" }}
             gap={{ default: "gapMd" }}
           >
-            {/* Multi-hunk selection buttons */}
             {!isSingleHunk && onSelectAll && (
               <>
                 <FlexItem>
@@ -165,13 +143,10 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
               </>
             )}
 
-            {/* Submit Button */}
             <FlexItem>
               <Button
                 variant={submitButtonInfo.variant}
-                onClick={() => {
-                  onApply();
-                }}
+                onClick={() => onApply()}
                 isDisabled={!canSubmit}
                 icon={<CheckIcon />}
                 style={{ minWidth: "120px" }}
@@ -180,7 +155,6 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
               </Button>
             </FlexItem>
 
-            {/* Reject Button - only show for single hunks since multi-hunks have Select All/Reject All */}
             {isSingleHunk && (
               <FlexItem>
                 <Button
@@ -196,7 +170,6 @@ export const ModifiedFileModalHeader: React.FC<ModifiedFileModalHeaderProps> = (
           </Flex>
         )}
 
-        {/* Completion Status */}
         {actionTaken && (
           <Alert
             variant={actionTaken === "applied" ? "success" : "danger"}

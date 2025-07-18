@@ -1,0 +1,301 @@
+/* VS Code Syntax Highlighting Theme for Diff Components */
+
+/* Base highlighting rules that preserve VS Code editor look and feel */
+.vscode-syntax-highlight .hljs {
+  background: transparent !important;
+  display: inline !important;
+  padding: 0 !important;
+  color: var(--vscode-editor-foreground);
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+}
+
+/* Keywords and Control Flow */
+.vscode-syntax-highlight .hljs-keyword,
+.vscode-syntax-highlight .hljs-selector-tag,
+.vscode-syntax-highlight .hljs-literal,
+.vscode-syntax-highlight .hljs-section,
+.vscode-syntax-highlight .hljs-link {
+  color: #569cd6;
+  font-weight: 600;
+}
+
+/* Built-in types and language constructs */
+.vscode-syntax-highlight .hljs-built_in,
+.vscode-syntax-highlight .hljs-builtin-name {
+  color: #569cd6;
+}
+
+/* Type annotations and class names */
+.vscode-syntax-highlight .hljs-type,
+.vscode-syntax-highlight .hljs-class .hljs-title,
+.vscode-syntax-highlight .hljs-title.hljs-class,
+.vscode-syntax-highlight .hljs-title.hljs-class .hljs-inherited,
+.vscode-syntax-highlight .hljs-title.hljs-function {
+  color: #4ec9b0;
+}
+
+/* Function and method names */
+.vscode-syntax-highlight .hljs-function,
+.vscode-syntax-highlight .hljs-title.hljs-function,
+.vscode-syntax-highlight .hljs-name,
+.vscode-syntax-highlight .hljs-selector-id,
+.vscode-syntax-highlight .hljs-selector-class {
+  color: #dcdcaa;
+}
+
+/* Strings and text literals */
+.vscode-syntax-highlight .hljs-string,
+.vscode-syntax-highlight .hljs-doctag,
+.vscode-syntax-highlight .hljs-template-tag,
+.vscode-syntax-highlight .hljs-template-variable,
+.vscode-syntax-highlight .hljs-addition {
+  color: #ce9178;
+}
+
+/* Regular expressions */
+.vscode-syntax-highlight .hljs-regexp {
+  color: #d16969;
+}
+
+/* Numbers and numeric literals */
+.vscode-syntax-highlight .hljs-number,
+.vscode-syntax-highlight .hljs-meta .hljs-number {
+  color: #b5cea8;
+}
+
+/* Booleans and null values */
+.vscode-syntax-highlight .hljs-literal,
+.vscode-syntax-highlight .hljs-boolean {
+  color: #569cd6;
+}
+
+/* Variables and properties */
+.vscode-syntax-highlight .hljs-variable,
+.vscode-syntax-highlight .hljs-template-variable,
+.vscode-syntax-highlight .hljs-property,
+.vscode-syntax-highlight .hljs-attribute {
+  color: #9cdcfe;
+}
+
+/* HTML/XML attributes */
+.vscode-syntax-highlight .hljs-attr {
+  color: #92c5f8;
+}
+
+/* Comments and documentation */
+.vscode-syntax-highlight .hljs-comment,
+.vscode-syntax-highlight .hljs-quote,
+.vscode-syntax-highlight .hljs-deletion {
+  color: #6a9955;
+  font-style: italic;
+}
+
+/* Preprocessor directives and meta information */
+.vscode-syntax-highlight .hljs-meta,
+.vscode-syntax-highlight .hljs-meta-string {
+  color: #569cd6;
+}
+
+/* Operators and punctuation */
+.vscode-syntax-highlight .hljs-operator,
+.vscode-syntax-highlight .hljs-punctuation {
+  color: var(--vscode-editor-foreground);
+}
+
+/* Language-specific enhancements */
+
+/* JavaScript/TypeScript */
+.vscode-syntax-highlight .hljs-title.hljs-function {
+  color: #dcdcaa;
+}
+
+.vscode-syntax-highlight .hljs-variable.language_ {
+  color: #569cd6;
+}
+
+/* Python */
+.vscode-syntax-highlight .hljs-decorator,
+.vscode-syntax-highlight .hljs-function .hljs-decorator {
+  color: #569cd6;
+}
+
+/* Java */
+.vscode-syntax-highlight .hljs-annotation {
+  color: #569cd6;
+}
+
+/* CSS */
+.vscode-syntax-highlight .hljs-selector-pseudo {
+  color: #d7ba7d;
+}
+
+.vscode-syntax-highlight .hljs-property {
+  color: #9cdcfe;
+}
+
+/* JSON */
+.vscode-syntax-highlight .hljs-attr {
+  color: #9cdcfe;
+}
+
+/* HTML */
+.vscode-syntax-highlight .hljs-tag {
+  color: #808080;
+}
+
+.vscode-syntax-highlight .hljs-tag .hljs-name {
+  color: #569cd6;
+}
+
+.vscode-syntax-highlight .hljs-tag .hljs-attr {
+  color: #92c5f8;
+}
+
+/* Shell/Bash */
+.vscode-syntax-highlight .hljs-variable {
+  color: #9cdcfe;
+}
+
+.vscode-syntax-highlight .hljs-string {
+  color: #ce9178;
+}
+
+/* Diff-specific color adjustments for better readability */
+
+/* Addition context (green background) */
+.diff-line.addition .vscode-syntax-highlight .hljs-comment {
+  color: #4a7c1a;
+}
+
+.diff-line.addition .vscode-syntax-highlight .hljs-string {
+  color: #a67f5b;
+}
+
+.diff-line.addition .vscode-syntax-highlight .hljs-keyword {
+  color: #4a8abf;
+}
+
+.diff-line.addition .vscode-syntax-highlight .hljs-function,
+.diff-line.addition .vscode-syntax-highlight .hljs-title {
+  color: #b8a965;
+}
+
+.diff-line.addition .vscode-syntax-highlight .hljs-variable {
+  color: #7eb3d3;
+}
+
+/* Deletion context (red background) */
+.diff-line.deletion .vscode-syntax-highlight .hljs-comment {
+  color: #b85450;
+}
+
+.diff-line.deletion .vscode-syntax-highlight .hljs-string {
+  color: #c9967c;
+}
+
+.diff-line.deletion .vscode-syntax-highlight .hljs-keyword {
+  color: #7ba3c4;
+}
+
+.diff-line.deletion .vscode-syntax-highlight .hljs-function,
+.diff-line.deletion .vscode-syntax-highlight .hljs-title {
+  color: #d1c080;
+}
+
+.diff-line.deletion .vscode-syntax-highlight .hljs-variable {
+  color: #a8c7db;
+}
+
+/* Enhanced token highlighting for common patterns */
+.vscode-syntax-highlight .hljs-emphasis {
+  font-style: italic;
+}
+
+.vscode-syntax-highlight .hljs-strong {
+  font-weight: 700;
+}
+
+.vscode-syntax-highlight .hljs-link {
+  color: #569cd6;
+  text-decoration: underline;
+}
+
+/* Subdue less important elements */
+.vscode-syntax-highlight .hljs-symbol {
+  color: var(--vscode-editorLineNumber-foreground);
+}
+
+/* Dark theme specific adjustments */
+.vscode-dark .vscode-syntax-highlight .hljs-comment {
+  color: #6a9955;
+}
+
+.vscode-dark .vscode-syntax-highlight .hljs-string {
+  color: #ce9178;
+}
+
+/* Light theme adjustments (if needed) */
+body.vscode-light .vscode-syntax-highlight .hljs-comment {
+  color: #008000;
+}
+
+body.vscode-light .vscode-syntax-highlight .hljs-string {
+  color: #a31515;
+}
+
+body.vscode-light .vscode-syntax-highlight .hljs-keyword {
+  color: #0000ff;
+}
+
+body.vscode-light .vscode-syntax-highlight .hljs-function,
+body.vscode-light .vscode-syntax-highlight .hljs-title {
+  color: #795e26;
+}
+
+body.vscode-light .vscode-syntax-highlight .hljs-variable {
+  color: #001080;
+}
+
+/* High contrast theme adjustments */
+body.vscode-high-contrast .vscode-syntax-highlight .hljs-comment {
+  color: #7ca668;
+}
+
+body.vscode-high-contrast .vscode-syntax-highlight .hljs-string {
+  color: #ce9178;
+}
+
+body.vscode-high-contrast .vscode-syntax-highlight .hljs-keyword {
+  color: #569cd6;
+}
+
+body.vscode-high-contrast .vscode-syntax-highlight .hljs-function,
+body.vscode-high-contrast .vscode-syntax-highlight .hljs-title {
+  color: #dcdcaa;
+}
+
+body.vscode-high-contrast .vscode-syntax-highlight .hljs-variable {
+  color: #9cdcfe;
+}
+
+/* Improve readability for inline code */
+.vscode-syntax-highlight code.hljs {
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+/* Better token spacing and readability */
+.vscode-syntax-highlight .hljs-tag .hljs-attr {
+  margin-left: 0.2em;
+}
+
+.vscode-syntax-highlight .hljs-tag .hljs-string {
+  margin-left: 0.1em;
+}
+
+/* Preserve text selection styling */
+.vscode-syntax-highlight .hljs::selection,
+.vscode-syntax-highlight .hljs *::selection {
+  background-color: var(--vscode-editor-selectionBackground);
+}

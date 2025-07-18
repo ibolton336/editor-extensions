@@ -130,290 +130,61 @@ const commandsMap: (state: ExtensionState) => {
       analyzerClient.runAnalysis();
     },
     "konveyor.getSolution": async (incidents: EnhancedIncident[], effort: SolutionEffortLevel) => {
-      await commands.executeCommand("konveyor.showResolutionPanel");
-
-      // Create a scope for the solution
-      const scope: Scope = { incidents, effort };
-
-      const clientId = uuidv4();
-      state.solutionServerClient.setClientId(clientId);
-
-      // Update the state to indicate we're starting to fetch a solution
-      // Clear previous data to prevent stale content from showing
-      state.mutateData((draft) => {
-        draft.isFetchingSolution = true;
-        draft.solutionState = "started";
-        draft.solutionScope = scope;
-        draft.chatMessages = []; // Clear previous chat messages (agentic mode)
-        draft.localChanges = []; // Clear previous local changes (non-agentic mode)
-        draft.solutionData = undefined; // Clear previous solution data
-      });
+      const { scope, clientId } = await initializeSolutionRequest(state, incidents, effort);
 
       // Declare variables outside try block for proper cleanup access
-      const pendingInteractions = new Map<string, (response: any) => void>();
       let workflow: any;
+      let pendingInteractions: Map<string, (response: any) => void> = new Map();
 
       try {
-        // Get the model provider configuration from settings YAML
-        const modelConfig = await getModelConfig(paths().settingsYaml);
-        if (!modelConfig) {
-          throw new Error("Model provider configuration not found in settings YAML.");
-        }
+        const setupResult = await setupWorkflow(state, incidents);
+        workflow = setupResult.workflow;
+        // Use the pendingInteractions from setup result, but keep the initialized one as fallback
+        pendingInteractions = setupResult.pendingInteractions || pendingInteractions;
 
-        // Initialize the appropriate model based on the config
-        const model = ModelProvider.fromConfig(modelConfig);
-
-        // Get the profile name from the incidents
-        const profileName = incidents[0]?.activeProfileName;
-        if (!profileName) {
-          window.showErrorMessage("No profile name found in incidents");
-          return;
-        }
-
-        // Create array to store all diffs
-        const allDiffs: { original: string; modified: string; diff: string }[] = [];
-
-        // Set the state to indicate we're fetching a solution
-
-        await state.workflowManager.init({
-          model: model,
-          workspaceDir: state.data.workspaceRoot,
-          solutionServerClient: state.solutionServerClient,
-        });
-
-        // Get the workflow instance
-        workflow = state.workflowManager.getWorkflow();
-        // Track processed message tokens to prevent duplicates
-        const processedTokens = new Set<string>();
-
-        // TODO (pgaikwad) - revisit this
-        // this is a number I am setting for demo purposes
-        // until we have a full UI support. we will only
-        // process child issues until the depth of 1
-        const maxTaskManagerIterations = 1;
-        // Reset task manager iterations for new solution
-        state.currentTaskManagerIterations = 0;
-        // Clear any existing modified files state at the start of a new solution
-        state.modifiedFiles.clear();
-        const modifiedFilesPromises: Array<Promise<void>> = [];
-        // Queue to store messages that arrive while waiting for user interaction
-        const messageQueue: KaiWorkflowMessage[] = [];
-
-        // Create the queue manager for centralized queue processing
-        const queueManager = new MessageQueueManager(
-          state,
+        setupWorkflowEventListeners(
           workflow,
-          modifiedFilesPromises,
-          processedTokens,
+          state,
+          setupResult.messageQueue,
+          setupResult.modifiedFilesPromises,
+          setupResult.processedTokens,
           pendingInteractions,
-          maxTaskManagerIterations,
+          1,
+          setupResult.queueManager,
         );
 
-        // Store the resolver function in the state so webview handler can access it
-        state.resolvePendingInteraction = (messageId: string, response: any) => {
-          const resolver = pendingInteractions.get(messageId);
-          if (resolver) {
-            try {
-              pendingInteractions.delete(messageId);
-              resolver(response);
-              return true;
-            } catch (error) {
-              console.error(`Error executing resolver for messageId: ${messageId}:`, error);
-              return false;
-            }
-          } else {
-            return false;
-          }
-        };
-
-        // Set up the event listener to use our message processing function
-
-        workflow.removeAllListeners();
-        workflow.on("workflowMessage", async (msg: KaiWorkflowMessage) => {
-          console.log(`Workflow message received: ${msg.type} (${msg.id})`);
-          await processMessage(
-            msg,
-            state,
-            workflow,
-            messageQueue,
-            modifiedFilesPromises,
-            processedTokens,
-            pendingInteractions,
-            maxTaskManagerIterations,
-            queueManager, // Pass the queue manager
-          );
-        });
-
-        // Add error event listener to catch workflow errors
-        workflow.on("error", (error: any) => {
-          console.error("Workflow error:", error);
-          state.mutateData((draft) => {
-            draft.isFetchingSolution = false;
-            if (draft.solutionState === "started") {
-              draft.solutionState = "failedOnSending";
-            }
-          });
-        });
-
-        // Set up periodic monitoring for stuck interactions
-        const stuckInteractionCheck = setInterval(() => {
-          if (state.isWaitingForUserInteraction && pendingInteractions.size > 0) {
-            console.log(`Monitoring pending interactions: ${pendingInteractions.size} active`);
-            console.log("Pending interaction IDs:", Array.from(pendingInteractions.keys()));
-          }
-        }, 60000); // Check every minute
-
-        try {
-          const agentModeEnabled = getConfigAgentMode();
-
-          await workflow.run({
-            incidents,
-            migrationHint: profileName,
-            programmingLanguage: "Java",
-            enableAdditionalInformation: agentModeEnabled,
-            enableDiagnostics: getConfigSuperAgentMode(),
-          } as KaiInteractiveWorkflowInput);
-
-          // Wait for all message processing to complete before proceeding
-          // This is critical for non-agentic mode where ModifiedFile messages
-          // are processed asynchronously during the workflow
-          if (!agentModeEnabled) {
-            // Give a short delay to ensure all async message processing completes
-            await new Promise((resolve) => setTimeout(resolve, 100));
-
-            // Wait for any remaining promises in the modifiedFilesPromises array
-            await Promise.all(modifiedFilesPromises);
-          }
-        } catch (err) {
-          console.error(`Error in running the agent - ${err}`);
-          console.info(`Error trace - `, err instanceof Error ? err.stack : "N/A");
-
-          // Ensure isFetchingSolution is reset on any error
-          state.mutateData((draft) => {
-            draft.isFetchingSolution = false;
-            if (draft.solutionState === "started") {
-              draft.solutionState = "failedOnSending";
-            }
-          });
-        } finally {
-          // Clear the stuck interaction monitoring
-          clearInterval(stuckInteractionCheck);
-
-          // Ensure isFetchingSolution is reset even if workflow fails unexpectedly
-          state.mutateData((draft) => {
-            draft.isFetchingSolution = false;
-            if (draft.solutionState === "started") {
-              draft.solutionState = "failedOnSending";
-            }
-            // Also ensure analysis flags are reset to prevent stuck tasks interactions
-            draft.isAnalyzing = false;
-            draft.isAnalysisScheduled = false;
-          });
-
-          // Only clean up if we're not waiting for user interaction
-          // This prevents clearing pending interactions while users are still deciding on file changes
-          if (!state.isWaitingForUserInteraction) {
-            pendingInteractions.clear();
-            state.resolvePendingInteraction = undefined;
-          }
-
-          // Clean up workflow resources
-          if (workflow) {
-            workflow.removeAllListeners();
-          }
-
-          // Dispose of workflow manager if it has pending resources
-          if (state.workflowManager && state.workflowManager.dispose) {
-            state.workflowManager.dispose();
-          }
-        }
+        await executeWorkflow(
+          workflow,
+          incidents,
+          setupResult.profileName,
+          setupResult.modifiedFilesPromises,
+        );
 
         // In agentic mode, file changes are handled through ModifiedFile messages
         // In non-agentic mode, we need to process diffs from modified files
         if (!getConfigAgentMode()) {
-          // Wait for all file processing to complete
-          await Promise.all(modifiedFilesPromises);
+          const allDiffs = await processNonAgenticDiffs(state, setupResult.modifiedFilesPromises);
 
-          // Event-driven approach - wait for modifiedFiles to be populated
-          // This handles cases where message processing might still be ongoing
-          if (state.modifiedFiles.size === 0) {
-            await new Promise<void>((resolve) => {
-              const timeout = setTimeout(() => {
-                resolve();
-              }, 5000); // 5 seconds max timeout
+          // Create a solution response with properly structured changes
+          const solutionResponse: GetSolutionResult = {
+            changes: allDiffs,
+            encountered_errors: [],
+            scope: { incidents, effort },
+            clientId: clientId,
+          };
 
-              const onFileAdded = () => {
-                clearTimeout(timeout);
-                state.modifiedFilesEventEmitter.removeListener("modifiedFileAdded", onFileAdded);
-                resolve();
-              };
-
-              state.modifiedFilesEventEmitter.once("modifiedFileAdded", onFileAdded);
-            });
-          }
-
-          // Process diffs from modified files
-          await Promise.all(
-            Array.from(state.modifiedFiles.entries()).map(async ([path, fileState]) => {
-              const { originalContent, modifiedContent } = fileState;
-              const uri = Uri.file(path);
-              const relativePath = workspace.asRelativePath(uri);
-              try {
-                if (!originalContent) {
-                  const diff = createTwoFilesPatch("", relativePath, "", modifiedContent);
-                  allDiffs.push({
-                    diff,
-                    modified: relativePath,
-                    original: "",
-                  });
-                } else {
-                  const diff = createPatch(relativePath, originalContent, modifiedContent);
-                  allDiffs.push({
-                    diff,
-                    modified: relativePath,
-                    original: relativePath,
-                  });
-                }
-              } catch (err) {
-                console.error(`Error in processing diff for ${relativePath} - ${err}`);
-              }
-            }),
-          );
-
-          if (allDiffs.length === 0) {
-            throw new Error("No diffs found in the response");
-          }
-        }
-
-        // Reset the cache after all processing is complete
-        state.kaiFsCache.reset();
-
-        // Create a solution response with properly structured changes
-        const solutionResponse: GetSolutionResult = {
-          changes: allDiffs,
-          encountered_errors: [],
-          scope: { incidents, effort },
-          clientId: clientId,
-        };
-
-        // Update the state with the solution
-        state.mutateData((draft) => {
-          draft.solutionState = "received";
-          draft.isFetchingSolution = false;
-
-          // Only set solutionData in non-agentic mode where we have traditional diffs
-          if (!getConfigAgentMode()) {
-            draft.solutionData = solutionResponse;
-            // Note: Removed redundant "Solution generated successfully!" message
-            // The specific completion status messages (e.g. "All resolutions have been applied")
-            // provide more meaningful feedback to users
-          }
+          updateSolutionState(state, solutionResponse, clientId, incidents, effort);
+        } else {
           // In agentic mode, file changes are handled through ModifiedFile messages in chat
-        });
+          // No need to process diffs from modified files here, as they are handled by the workflow
+          const solutionResponse: GetSolutionResult = {
+            changes: [], // Empty diffs for agentic mode
+            encountered_errors: [],
+            scope: { incidents, effort },
+            clientId: clientId,
+          };
 
-        // Load the solution
-        if (!getConfigAgentMode()) {
-          commands.executeCommand("konveyor.loadSolution", solutionResponse, { incidents });
+          updateSolutionState(state, solutionResponse, clientId, incidents, effort);
         }
 
         // Clean up pending interactions and resolver function after successful completion
@@ -427,7 +198,7 @@ const commandsMap: (state: ExtensionState) => {
 
         // Clean up pending interactions and resolver function on error
         // Only clean up if we're not waiting for user interaction
-        if (!state.isWaitingForUserInteraction) {
+        if (!state.isWaitingForUserInteraction && pendingInteractions) {
           pendingInteractions.clear();
           state.resolvePendingInteraction = undefined;
         }
@@ -445,6 +216,24 @@ const commandsMap: (state: ExtensionState) => {
         });
 
         window.showErrorMessage(`Failed to generate solution: ${error.message}`);
+      } finally {
+        // Only reset isFetchingSolution if we're not waiting for user interaction
+        // In agentic mode, we might be waiting for user to approve/reject files
+        if (!state.isWaitingForUserInteraction) {
+          state.mutateData((draft) => {
+            draft.isFetchingSolution = false;
+            if (draft.solutionState === "started") {
+              draft.solutionState = "failedOnSending";
+            }
+            // Also ensure analysis flags are reset to prevent stuck tasks interactions
+            draft.isAnalyzing = false;
+            draft.isAnalysisScheduled = false;
+          });
+        }
+
+        if (workflow && pendingInteractions) {
+          cleanupWorkflow(state, workflow, pendingInteractions);
+        }
       }
     },
     "konveyor.getSuccessRate": async () => {
@@ -702,6 +491,284 @@ const commandsMap: (state: ExtensionState) => {
     },
   };
 };
+
+// Helper functions for getSolution command
+async function initializeSolutionRequest(
+  state: ExtensionState,
+  incidents: EnhancedIncident[],
+  effort: SolutionEffortLevel,
+): Promise<{ scope: Scope; clientId: string }> {
+  await commands.executeCommand("konveyor.showResolutionPanel");
+
+  const scope: Scope = { incidents, effort };
+  const clientId = uuidv4();
+  state.solutionServerClient.setClientId(clientId);
+
+  // Update the state to indicate we're starting to fetch a solution
+  state.mutateData((draft) => {
+    draft.isFetchingSolution = true;
+    draft.solutionState = "started";
+    draft.solutionScope = scope;
+    draft.chatMessages = []; // Clear previous chat messages (agentic mode)
+    draft.localChanges = []; // Clear previous local changes (non-agentic mode)
+    draft.solutionData = undefined; // Clear previous solution data
+  });
+
+  return { scope, clientId };
+}
+
+async function setupWorkflow(
+  state: ExtensionState,
+  incidents: EnhancedIncident[],
+): Promise<{
+  workflow: any;
+  model: any;
+  profileName: string;
+  pendingInteractions: Map<string, (response: any) => void>;
+  processedTokens: Set<string>;
+  modifiedFilesPromises: Array<Promise<void>>;
+  messageQueue: KaiWorkflowMessage[];
+  queueManager: MessageQueueManager;
+}> {
+  // Get the model provider configuration from settings YAML
+  const modelConfig = await getModelConfig(paths().settingsYaml);
+  if (!modelConfig) {
+    throw new Error("Model provider configuration not found in settings YAML.");
+  }
+
+  // Initialize the appropriate model based on the config
+  const model = ModelProvider.fromConfig(modelConfig);
+
+  // Get the profile name from the incidents
+  const profileName = incidents[0]?.activeProfileName;
+  if (!profileName) {
+    throw new Error("No profile name found in incidents");
+  }
+
+  await state.workflowManager.init({
+    model: model,
+    workspaceDir: state.data.workspaceRoot,
+    solutionServerClient: state.solutionServerClient,
+  });
+
+  const workflow = state.workflowManager.getWorkflow();
+  const processedTokens = new Set<string>();
+  const maxTaskManagerIterations = 1;
+
+  // Reset task manager iterations for new solution
+  state.currentTaskManagerIterations = 0;
+  // Clear any existing modified files state at the start of a new solution
+  state.modifiedFiles.clear();
+  const modifiedFilesPromises: Array<Promise<void>> = [];
+  const messageQueue: KaiWorkflowMessage[] = [];
+
+  // Create the queue manager for centralized queue processing
+  const queueManager = new MessageQueueManager(
+    state,
+    workflow,
+    modifiedFilesPromises,
+    processedTokens,
+    new Map<string, (response: any) => void>(),
+    maxTaskManagerIterations,
+  );
+
+  return {
+    workflow,
+    model,
+    profileName,
+    pendingInteractions: new Map<string, (response: any) => void>(),
+    processedTokens,
+    modifiedFilesPromises,
+    messageQueue,
+    queueManager,
+  };
+}
+
+function setupWorkflowEventListeners(
+  workflow: any,
+  state: ExtensionState,
+  messageQueue: KaiWorkflowMessage[],
+  modifiedFilesPromises: Array<Promise<void>>,
+  processedTokens: Set<string>,
+  pendingInteractions: Map<string, (response: any) => void>,
+  maxTaskManagerIterations: number,
+  queueManager: MessageQueueManager,
+): void {
+  // Store the resolver function in the state so webview handler can access it
+  state.resolvePendingInteraction = (messageId: string, response: any) => {
+    const resolver = pendingInteractions.get(messageId);
+    if (resolver) {
+      try {
+        pendingInteractions.delete(messageId);
+        resolver(response);
+        return true;
+      } catch (error) {
+        console.error(`Error executing resolver for messageId: ${messageId}:`, error);
+        return false;
+      }
+    } else {
+      return false;
+    }
+  };
+
+  workflow.removeAllListeners();
+  workflow.on("workflowMessage", async (msg: KaiWorkflowMessage) => {
+    console.log(`Workflow message received: ${msg.type} (${msg.id})`);
+    await processMessage(
+      msg,
+      state,
+      workflow,
+      messageQueue,
+      modifiedFilesPromises,
+      processedTokens,
+      pendingInteractions,
+      maxTaskManagerIterations,
+      queueManager,
+    );
+  });
+
+  // Add error event listener to catch workflow errors
+  workflow.on("error", (error: any) => {
+    console.error("Workflow error:", error);
+    state.mutateData((draft) => {
+      draft.isFetchingSolution = false;
+      if (draft.solutionState === "started") {
+        draft.solutionState = "failedOnSending";
+      }
+    });
+  });
+}
+
+async function executeWorkflow(
+  workflow: any,
+  incidents: EnhancedIncident[],
+  profileName: string,
+  modifiedFilesPromises: Array<Promise<void>>,
+): Promise<void> {
+  const agentModeEnabled = getConfigAgentMode();
+
+  await workflow.run({
+    incidents,
+    migrationHint: profileName,
+    programmingLanguage: "Java",
+    enableAdditionalInformation: agentModeEnabled,
+    enableDiagnostics: getConfigSuperAgentMode(),
+  } as KaiInteractiveWorkflowInput);
+
+  // Wait for all message processing to complete before proceeding
+  // This is critical for non-agentic mode where ModifiedFile messages
+  // are processed asynchronously during the workflow
+  if (!agentModeEnabled) {
+    // Give a short delay to ensure all async message processing completes
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Wait for any remaining promises in the modifiedFilesPromises array
+    await Promise.all(modifiedFilesPromises);
+  }
+}
+
+async function processNonAgenticDiffs(
+  state: ExtensionState,
+  modifiedFilesPromises: Array<Promise<void>>,
+): Promise<{ original: string; modified: string; diff: string }[]> {
+  const allDiffs: { original: string; modified: string; diff: string }[] = [];
+
+  // Wait for all file processing to complete
+  await Promise.all(modifiedFilesPromises);
+
+  // If no modified files after processing, that's fine - just continue
+  // No need for timeout logic that could cause unwanted state changes
+
+  // Process diffs from modified files
+  await Promise.all(
+    Array.from(state.modifiedFiles.entries()).map(async ([path, fileState]) => {
+      const { originalContent, modifiedContent } = fileState;
+      const uri = Uri.file(path);
+      const relativePath = workspace.asRelativePath(uri);
+      try {
+        if (!originalContent) {
+          const diff = createTwoFilesPatch("", relativePath, "", modifiedContent);
+          allDiffs.push({
+            diff,
+            modified: relativePath,
+            original: "",
+          });
+        } else {
+          const diff = createPatch(relativePath, originalContent, modifiedContent);
+          allDiffs.push({
+            diff,
+            modified: relativePath,
+            original: relativePath,
+          });
+        }
+      } catch (err) {
+        console.error(`Error in processing diff for ${relativePath} - ${err}`);
+      }
+    }),
+  );
+
+  if (allDiffs.length === 0) {
+    throw new Error("No diffs found in the response");
+  }
+
+  return allDiffs;
+}
+
+function cleanupWorkflow(
+  state: ExtensionState,
+  workflow: any,
+  pendingInteractions: Map<string, (response: any) => void>,
+): void {
+  // Only clean up if we're not waiting for user interaction
+  // This prevents clearing pending interactions while users are still deciding on file changes
+  if (!state.isWaitingForUserInteraction) {
+    pendingInteractions.clear();
+    state.resolvePendingInteraction = undefined;
+  }
+
+  // Clean up workflow resources
+  if (workflow) {
+    workflow.removeAllListeners();
+  }
+
+  // Dispose of workflow manager if it has pending resources
+  if (state.workflowManager && state.workflowManager.dispose) {
+    state.workflowManager.dispose();
+  }
+}
+
+function updateSolutionState(
+  state: ExtensionState,
+  solutionResponse: GetSolutionResult,
+  clientId: string,
+  incidents: EnhancedIncident[],
+  effort: SolutionEffortLevel,
+): void {
+  // Reset the cache after all processing is complete
+  state.kaiFsCache.reset();
+
+  // Update the state with the solution
+  state.mutateData((draft) => {
+    draft.solutionState = "received";
+
+    // Only set isFetchingSolution to false if we're not waiting for user interaction
+    // In agentic mode, we might be waiting for user to approve/reject files
+    if (!state.isWaitingForUserInteraction) {
+      draft.isFetchingSolution = false;
+    }
+
+    // Only set solutionData in non-agentic mode where we have traditional diffs
+    if (!getConfigAgentMode()) {
+      draft.solutionData = solutionResponse;
+    }
+    // In agentic mode, file changes are handled through ModifiedFile messages in chat
+  });
+
+  // Load the solution
+  if (!getConfigAgentMode()) {
+    commands.executeCommand("konveyor.loadSolution", solutionResponse, { incidents });
+  }
+}
 
 export function registerAllCommands(state: ExtensionState) {
   let commandMap: { [command: string]: (...args: any) => any };
