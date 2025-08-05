@@ -24,3 +24,14 @@
   gap: 12px;
   padding: 8px 0px;
 }
+
+.analysis-status-indicator {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+}
+
+.status-text {
+  font-size: 0.875rem;
+  color: var(--vscode-descriptionForeground);
+}

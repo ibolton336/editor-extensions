@@ -82,6 +82,8 @@ export const getConfigMaxLLMQueries = (): number | undefined =>
 export const getConfigAgentMode = (): boolean => getConfigValue<boolean>("kai.agentMode") ?? false;
 export const getExcludedDiagnosticSources = (): string[] =>
   getConfigValue<string[]>("kai.excludedDiagnosticSources") ?? [];
+export const getConfigAutoStartServer = (): boolean =>
+  getConfigValue<boolean>("autoStartServer") ?? true;
 
 export const updateSolutionMaxEffortLevel = async (value: SolutionEffortLevel): Promise<void> => {
   await updateConfigValue("kai.getSolutionMaxEffort", value, vscode.ConfigurationTarget.Workspace);

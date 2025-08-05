@@ -30,6 +30,7 @@ import {
   getConfigSolutionServerUrl,
   updateConfigErrors,
   getConfigAgentMode,
+  getConfigAutoStartServer,
   getCacheDir,
   getTraceDir,
   getTraceEnabled,
@@ -43,6 +44,7 @@ import { DiagnosticTaskManager } from "./taskManager/taskManager";
 // Removed InlineSuggestionCodeActionProvider import since we're using merge editor now
 import { ParsedModelConfig } from "./modelProvider/types";
 import { getModelProviderFromConfig, parseModelConfig } from "./modelProvider";
+import { StatusBarManager } from "./statusBarManager";
 import winston from "winston";
 import { OutputChannelTransport } from "winston-transport-vscode";
 
@@ -52,6 +54,12 @@ class VsCodeExtension {
   private _onDidChange = new vscode.EventEmitter<Immutable<ExtensionData>>();
   readonly onDidChangeData = this._onDidChange.event;
   private listeners: vscode.Disposable[] = [];
+  private statusBarManager: StatusBarManager;
+
+  // Public getter for extension data
+  get extensionData(): Immutable<ExtensionData> {
+    return this.state.data;
+  }
 
   constructor(
     public readonly paths: ExtensionPaths,
@@ -193,6 +201,9 @@ class VsCodeExtension {
       },
       modelProvider: undefined,
     };
+
+    // Initialize status bar manager after state is created
+    this.statusBarManager = new StatusBarManager(this.state);
   }
 
   public async initialize(): Promise<void> {
@@ -236,6 +247,12 @@ class VsCodeExtension {
       this.registerWebviewProvider();
       this.listeners.push(this.onDidChangeData(registerDiffView(this.state)));
       this.listeners.push(this.onDidChangeData(registerIssueView(this.state)));
+      this.listeners.push(
+        this.onDidChangeData((data) => {
+          this.statusBarManager.updateStatusBarItem(data);
+        }),
+      );
+
       this.registerCommands();
       this.registerLanguageProviders();
       this.checkContinueInstalled();
@@ -471,6 +488,9 @@ class VsCodeExtension {
     this.state.resolvePendingInteraction = undefined;
     this.state.isWaitingForUserInteraction = false;
 
+    // Dispose status bar manager
+    this.statusBarManager?.dispose();
+
     // Dispose workflow manager
     if (this.state.workflowManager && this.state.workflowManager.dispose) {
       try {
@@ -523,12 +543,108 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     extension = new VsCodeExtension(paths, context, logger);
     await extension.initialize();
+
+    // Auto-start server if enabled
+    await autoStartServer(extension, logger);
+
+    // Show welcome message for first-time users
+    const hasShownWelcome = context.globalState.get("konveyor.welcomeShown", false);
+    if (!hasShownWelcome) {
+      // Set the flag to prevent showing again
+      context.globalState.update("konveyor.welcomeShown", true);
+
+      // Show welcome message after a short delay to ensure extension is fully loaded
+      setTimeout(() => {
+        vscode.window
+          .showInformationMessage(
+            "Konveyor AI (KAI) is ready! Click the KAI icon in the bottom status bar to access settings.",
+            "Open Settings",
+            "Got it",
+          )
+          .then((selection) => {
+            if (selection === "Open Settings") {
+              vscode.commands.executeCommand("konveyor.statusBar.showMenu");
+            }
+          });
+      }, 2000); // 2 second delay
+    }
   } catch (error) {
     await extension?.dispose();
     extension = undefined;
     logger.error("Failed to activate Konveyor extension", error);
     vscode.window.showErrorMessage(`Failed to activate Konveyor extension: ${error}`);
     throw error; // Re-throw to ensure VS Code marks the extension as failed to activate
+  }
+}
+
+async function autoStartServer(extension: VsCodeExtension, logger: winston.Logger): Promise<void> {
+  try {
+    // Check if auto-start is enabled
+    const shouldAutoStart = getConfigAutoStartServer();
+
+    if (!shouldAutoStart) {
+      logger.info("Auto-start server is disabled by user preference");
+      return;
+    }
+
+    // Check if server can start safely
+    const canStart = await checkServerStartupConditions(extension, logger);
+
+    if (canStart) {
+      logger.info("Attempting to auto-start server...");
+
+      try {
+        // Use the public command to start the server
+        await vscode.commands.executeCommand("konveyor.startServer");
+        logger.info("Server auto-started successfully");
+      } catch (error) {
+        logger.warn("Auto-start failed, user can start manually", { error });
+        // Silent failure - don't show error to user
+      }
+    } else {
+      logger.info("Server auto-start skipped due to startup conditions not met");
+    }
+  } catch (error) {
+    logger.error("Error during auto-start process", { error });
+    // Silent failure - don't show error to user
+  }
+}
+
+async function checkServerStartupConditions(
+  extension: VsCodeExtension,
+  logger: winston.Logger,
+): Promise<boolean> {
+  try {
+    // Get current data through public interface
+    const data = extension.extensionData;
+
+    // Check if server is already running
+    const serverState = data.serverState;
+    if (serverState === "running") {
+      logger.info("Auto-start skipped: Server is already running");
+      return false;
+    }
+
+    // Check if server is starting
+    if (serverState === "starting") {
+      logger.info("Auto-start skipped: Server is already starting");
+      return false;
+    }
+
+    // Check if there are configuration errors
+    const configErrors = data.configErrors;
+    if (configErrors.length > 0) {
+      logger.info("Auto-start skipped: Configuration errors detected", { errors: configErrors });
+      return false;
+    }
+
+    // For now, we'll skip the model provider check since it's not easily accessible
+    // The server start command will handle this internally
+    logger.info("Basic startup conditions met for auto-start");
+    return true;
+  } catch (error) {
+    logger.error("Error checking startup conditions", { error });
+    return false;
   }
 }
 

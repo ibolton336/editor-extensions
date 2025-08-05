@@ -32,7 +32,6 @@ import {
   Spinner,
   Stack,
   StackItem,
-  Switch,
   Title,
   Toolbar,
   ToolbarContent,
@@ -41,18 +40,12 @@ import {
 } from "@patternfly/react-core";
 
 import {
-  openFile,
-  startServer,
   runAnalysis,
-  stopServer,
   getSuccessRate,
-  toggleAgentMode,
 } from "../../hooks/actions";
 import { useViolations } from "../../hooks/useViolations";
 import { useExtensionStateContext } from "../../context/ExtensionStateContext";
 import { WalkthroughDrawer } from "./WalkthroughDrawer/WalkthroughDrawer";
-import { ConfigButton } from "./ConfigButton/ConfigButton";
-import { ServerStatusToggle } from "../ServerStatusToggle/ServerStatusToggle";
 import { ViolationsCount } from "../ViolationsCount/ViolationsCount";
 import ViolationIncidentsList from "../ViolationIncidentsList";
 import { ProfileSelector } from "../ProfileSelector/ProfileSelector";
@@ -75,7 +68,6 @@ const AnalysisPage: React.FC = () => {
     serverState,
     solutionServerEnabled,
     localChanges,
-    isAgentMode,
   } = state;
 
   console.log(configErrors);
@@ -101,15 +93,9 @@ const AnalysisPage: React.FC = () => {
 
   const handleIncidentSelect = (incident: Incident) => {
     setFocusedIncident(incident);
-    dispatch(openFile(incident.uri, incident.lineNumber ?? 0));
   };
 
   const handleRunAnalysis = () => dispatch(runAnalysis());
-  const handleServerToggle = () => dispatch(serverRunning ? stopServer() : startServer());
-
-  const handleAgentModeToggle = () => {
-    dispatch(toggleAgentMode());
-  };
 
   const panelContent = (
     <WalkthroughDrawer
@@ -120,10 +106,6 @@ const AnalysisPage: React.FC = () => {
   );
 
   const selectedProfile = profiles.find((p) => p.id === activeProfileId);
-
-  const configInvalid =
-    !selectedProfile?.labelSelector?.trim() ||
-    (!selectedProfile.useDefaultRules && (selectedProfile.customRules?.length ?? 0) === 0);
 
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -144,35 +126,13 @@ const AnalysisPage: React.FC = () => {
                   <Toolbar>
                     <ToolbarContent>
                       <ToolbarGroup align={{ default: "alignEnd" }}>
+                        {/* Simple status indicator - clean and minimal */}
                         <ToolbarItem>
-                          <ServerStatusToggle
-                            isRunning={serverRunning}
-                            isStarting={isStartingServer}
-                            isInitializing={isInitializingServer}
-                            onToggle={handleServerToggle}
-                            hasWarning={configInvalid}
-                          />
-                        </ToolbarItem>
-                        <ToolbarItem>
-                          <div>
-                            <div className="agent-mode-wrapper">
-                              <Switch
-                                id="agent-mode-switch"
-                                isChecked={isAgentMode}
-                                label="Agent Mode"
-                                onChange={(_event) => handleAgentModeToggle()}
-                                aria-label="Toggle Agent Mode"
-                                isReversed
-                              />
-                            </div>
+                          <div className="analysis-status-indicator">
+                            <span className="status-text">
+                              {serverRunning ? "✅ Ready" : "⏹️ Stopped"}
+                            </span>
                           </div>
-                        </ToolbarItem>
-                        <ToolbarItem>
-                          <ConfigButton
-                            onClick={() => setIsConfigOpen(true)}
-                            hasWarning={configErrors.length > 0}
-                            warningMessage="Please review your configuration before running analysis."
-                          />
                         </ToolbarItem>
                       </ToolbarGroup>
                     </ToolbarContent>

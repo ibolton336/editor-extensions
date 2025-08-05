@@ -47,6 +47,7 @@ import {
   updateGetSolutionMaxIterations,
   updateGetSolutionMaxPriority,
   getConfigAgentMode,
+  toggleAgentMode,
 } from "./utilities/configuration";
 import { runPartialAnalysis } from "./analysis";
 import { fixGroupOfIncidents, IncidentTypeItem } from "./issueView";
@@ -690,6 +691,63 @@ const commandsMap: (
       window.showInformationMessage(
         `getSolution parameters updated: max_priority=${maxPriority}, max_depth=${maxDepth}, max_iterations=${maxIterations}`,
       );
+    },
+    "konveyor.toggleAgentMode": async () => {
+      const currentMode = getConfigAgentMode();
+      await toggleAgentMode();
+      // Update the state to reflect the change
+      state.mutateData((draft) => {
+        draft.isAgentMode = !currentMode;
+      });
+    },
+    "konveyor.openSettings": async () => {
+      // Open the settings modal via the status bar command
+      await commands.executeCommand("konveyor.statusBar.showMenu");
+    },
+    "konveyor.toggleServer": async () => {
+      const analyzerClient = state.analyzerClient;
+      const { serverState } = state.data;
+
+      if (serverState === "running") {
+        try {
+          await analyzerClient.stop();
+        } catch (e) {
+          logger.error("Could not stop the server", { error: e });
+        }
+      } else {
+        if (!(await analyzerClient.canAnalyzeInteractive())) {
+          return;
+        }
+        try {
+          await analyzerClient.start();
+        } catch (e) {
+          logger.error("Could not start the server", { error: e });
+        }
+      }
+    },
+    "konveyor.showWelcome": async () => {
+      const { serverState, isAgentMode, profiles, activeProfileId } = state.data;
+      const activeProfile = profiles.find((p) => p.id === activeProfileId);
+
+      const welcomeMessage = `Welcome to Konveyor AI (KAI)!
+
+Current Status:
+• Server: ${serverState === "running" ? "Running" : "Stopped"}
+• Agent Mode: ${isAgentMode ? "Enabled" : "Disabled"}
+• Active Profile: ${activeProfile ? activeProfile.name : "None"}
+
+Quick Access:
+• Click the KAI icon in the bottom status bar to open settings
+• Use Ctrl+Shift+K (Cmd+Shift+K on Mac) for quick access
+• Use Command Palette: "Konveyor AI: Open Settings"
+
+Need help? Click the KAI icon in the status bar!`;
+
+      window.showInformationMessage(welcomeMessage, "Open Settings", "Got it").then((selection) => {
+        if (selection === "Open Settings") {
+          commands.executeCommand("konveyor.statusBar.showMenu");
+        }
+      });
     },
   };
 };

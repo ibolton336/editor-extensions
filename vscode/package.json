@@ -270,6 +270,35 @@
         "title": "Configure getSolution Parameters",
         "category": "Konveyor",
         "icon": "$(gear)"
+      },
+      {
+        "command": "konveyor.statusBar.showMenu",
+        "title": "Konveyor Settings",
+        "category": "Konveyor"
+      },
+      {
+        "command": "konveyor.openSettings",
+        "title": "Konveyor AI: Open Settings",
+        "category": "Konveyor",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "konveyor.toggleServer",
+        "title": "Konveyor AI: Toggle Server",
+        "category": "Konveyor",
+        "icon": "$(server)"
+      },
+      {
+        "command": "konveyor.toggleAgentMode",
+        "title": "Konveyor AI: Toggle Agent Mode",
+        "category": "Konveyor",
+        "icon": "$(robot)"
+      },
+      {
+        "command": "konveyor.showWelcome",
+        "title": "Konveyor AI: Show Welcome",
+        "category": "Konveyor",
+        "icon": "$(info)"
       }
     ],
     "submenus": [
@@ -644,6 +673,13 @@
           "description": "Should the analyzer analyze project dependencies?",
           "scope": "window",
           "order": 99
+        },
+        "konveyor.autoStartServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the analysis server when the extension loads",
+          "scope": "window",
+          "order": 100
         }
       }
     },
@@ -655,6 +691,16 @@
       {
         "command": "konveyor.diffView.prev",
         "key": "shift+f4"
+      },
+      {
+        "command": "konveyor.statusBar.showMenu",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k"
+      },
+      {
+        "command": "konveyor.openSettings",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o"
       }
     ]
   },
