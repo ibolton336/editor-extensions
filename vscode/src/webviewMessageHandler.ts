@@ -47,53 +47,6 @@ import { handleFileResponse } from "./utilities/ModifiedFiles/handleFileResponse
 import winston from "winston";
 import { getConfigDiffEditorType, toggleAgentMode } from "./utilities/configuration";
 
-// Utility function for diff validation and normalization
-function validateAndNormalizeDiff(
-  diff: string,
-  originalContent: string,
-): {
-  isValid: boolean;
-  normalizedDiff: string;
-  errors: string[];
-} {
-  const errors: string[] = [];
-
-  if (!diff || typeof diff !== "string") {
-    errors.push("Diff content is missing or invalid");
-    return { isValid: false, normalizedDiff: "", errors };
-  }
-
-  if (!originalContent || typeof originalContent !== "string") {
-    errors.push("Original content is missing or invalid");
-    return { isValid: false, normalizedDiff: "", errors };
-  }
-
-  // Normalize line endings (like myers.ts does)
-  const normalizedDiff = diff.replace(/\r\n/g, "\n");
-  const _normalizedOriginal = originalContent.replace(/\r\n/g, "\n");
-
-  // Basic diff format validation
-  const lines = normalizedDiff.split("\n");
-  let hasValidHunk = false;
-
-  for (const line of lines) {
-    if (line.startsWith("@@")) {
-      hasValidHunk = true;
-      break;
-    }
-  }
-
-  if (!hasValidHunk) {
-    errors.push("Diff does not contain valid hunk headers");
-  }
-
-  return {
-    isValid: errors.length === 0,
-    normalizedDiff,
-    errors,
-  };
-}
-
 export function setupWebviewMessageListener(webview: vscode.Webview, state: ExtensionState) {
   webview.onDidReceiveMessage(async (message) => {
     const logger = state.logger.child({
@@ -277,23 +230,6 @@ const actions: {
       vscode.window.showErrorMessage(`Failed to reject changes: ${error}`);
     }
   },
-  SHOW_MAXIMIZED_DIFF: async ({ path, _content, diff, messageToken }, state, logger) => {
-    // TODO: Implement new maximized diff view component
-    // This will replace the continue flow for agentic mode
-    // Should show a full-screen webview with:
-    // - File content with diff applied inline
-    // - Accept/Reject buttons that call FILE_RESPONSE
-    logger.info("SHOW_MAXIMIZED_DIFF - placeholder for new diff view", { path, messageToken });
-    // For now, fall back to old VIEW_FILE behavior
-    const change = {
-      originalUri: path,
-      modifiedUri: path,
-      diff: diff,
-      state: "pending",
-    };
-    return actions.VIEW_FILE({ path, change }, state, logger);
-  },
-
   SHOW_DIFF_WITH_DECORATORS: async ({ path, diff, content, messageToken }, state, logger) => {
     try {
       logger.info("SHOW_DIFF_WITH_DECORATORS called", { path, messageToken });
@@ -311,35 +247,6 @@ const actions: {
       vscode.window.showErrorMessage(`Failed to show diff with decorations: ${error}`);
     }
   },
-
-  // New streaming diff action for real-time updates (disabled - use static flow)
-  START_STREAMING_DIFF: async ({ path, startLine = 0, _diff }, state, logger) => {
-    try {
-      logger.info("START_STREAMING_DIFF disabled; using static diff flow", { path, startLine });
-      await vscode.commands.executeCommand("setContext", "konveyor.streamingDiff", false);
-    } catch (error) {
-      logger.error("Error handling START_STREAMING_DIFF (disabled):", error);
-    }
-  },
-
-  STREAM_DIFF_LINE: async ({ path, _diffLine }, state, logger) => {
-    try {
-      // Streaming diff not yet fully integrated - placeholder
-      logger.warn("STREAM_DIFF_LINE not yet fully integrated");
-      const handler = null;
-
-      if (handler) {
-        // await handler.streamDiffLine(diffLine);
-        // Refresh CodeLens after each line for real-time updates
-        // TODO: Integrate with vertical diff manager
-      } else {
-        logger.warn("No streaming handler found for path", { path });
-      }
-    } catch (error) {
-      logger.error("Error handling STREAM_DIFF_LINE:", error);
-    }
-  },
-
   VIEW_FILE: async ({ path, change }, state, logger) => {
     try {
       const uri = vscode.Uri.file(path);
@@ -367,20 +274,12 @@ const actions: {
         logger.debug(`Using current file content as baseline for ${path} (no modifiedFiles state)`);
       }
 
-      // Validate and normalize the diff before processing
-      const diffValidation = validateAndNormalizeDiff(change.diff, baselineContent);
-      if (!diffValidation.isValid) {
-        logger.error("Diff validation failed:", diffValidation.errors);
-        vscode.window.showErrorMessage(`Invalid diff format: ${diffValidation.errors.join(", ")}`);
-        return;
-      }
-
       // Parse and apply the diff to get the suggested content with timeout protection
       const DIFF_TIMEOUT_MS = 3000; // 3 seconds timeout
 
       const diffParsingPromise = (async () => {
         const { parsePatch } = await import("diff");
-        const parsedDiff = parsePatch(diffValidation.normalizedDiff);
+        const parsedDiff = parsePatch(change.diff);
 
         if (!parsedDiff || parsedDiff.length === 0) {
           throw new Error("Failed to parse diff for comparison");
@@ -388,7 +287,7 @@ const actions: {
 
         // Apply the patch to get the suggested content
         const { applyPatch } = await import("diff");
-        const suggestedContent = applyPatch(baselineContent, diffValidation.normalizedDiff);
+        const suggestedContent = applyPatch(baselineContent, change.diff);
 
         if (suggestedContent === false) {
           throw new Error("Failed to apply patch for comparison");

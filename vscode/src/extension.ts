@@ -50,7 +50,7 @@ import { OutputChannelTransport } from "winston-transport-vscode";
 // import { DiffDecorationManager } from "./decorations";
 import { VerticalDiffManager } from "./diff/vertical/manager";
 import { StaticDiffAdapter } from "./diff/staticDiffAdapter";
-import { VsCodeIde } from "./diff/vscodeIde";
+import { SimpleIDE } from "./utilities/ideUtils";
 
 class VsCodeExtension {
   private state: ExtensionState;
@@ -140,9 +140,6 @@ class VsCodeExtension {
       isWaitingForUserInteraction: false,
       lastMessageId: "0",
       currentTaskManagerIterations: 0,
-      // decorationManagers: new Map<string, DiffDecorationManager>(), // Removed - using vertical diff system
-      appliedDiffs: new Set<string>(), // Initialize applied diffs tracking
-
       workflowManager: {
         workflow: undefined,
         isInitialized: false,
@@ -369,11 +366,8 @@ class VsCodeExtension {
   }
 
   private initializeVerticalDiff(): void {
-    // Use minimal webview protocol - we don't need Continue's full system
-
-    // Create minimal edit decoration manager (not needed for static diffs)
-    // Create VS Code IDE implementation
-    const ide = new VsCodeIde();
+    // Create simple IDE implementation
+    const ide = new SimpleIDE();
 
     // Initialize managers
     this.state.verticalDiffManager = new VerticalDiffManager(ide);
@@ -385,7 +379,7 @@ class VsCodeExtension {
 
     this.state.staticDiffAdapter = new StaticDiffAdapter(this.state.verticalDiffManager);
 
-    this.state.logger.info("Vertical diff system initialized with minimal protocol");
+    this.state.logger.info("Vertical diff system initialized");
   }
 
   private setupDiffStatusBar(): void {

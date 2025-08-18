@@ -1,7 +1,15 @@
 import React from "react";
-import { Button, Flex, FlexItem } from "@patternfly/react-core";
-import { CheckCircleIcon, TimesCircleIcon, EyeIcon, CodeIcon } from "@patternfly/react-icons";
+import { Button, Flex, FlexItem, Tooltip, Icon } from "@patternfly/react-core";
+import {
+  CheckCircleIcon,
+  TimesCircleIcon,
+  EyeIcon,
+  CodeIcon,
+  InfoCircleIcon,
+  ExclamationTriangleIcon,
+} from "@patternfly/react-icons";
 import { NormalizedFileData } from "./useModifiedFileData";
+import "./modifiedFileActions.css";
 
 interface ModifiedFileActionsProps {
   actionTaken: "applied" | "rejected" | null;
@@ -40,13 +48,32 @@ const DiffStatusBanner: React.FC<{ onApplyChanges: () => void }> = ({ onApplyCha
   <Flex className="modified-file-actions" justifyContent={{ default: "justifyContentCenter" }}>
     <FlexItem>
       <div className="diff-status-banner">
-        <CodeIcon className="diff-status-icon" />
-        <span>Reviewing changes - Accept or Reject to apply changes</span>
-        <Button
-          variant="link"
-          onClick={onApplyChanges}
-          className="continue-button"
+        <Icon status="warning">
+          <ExclamationTriangleIcon color="#b98412" />
+        </Icon>
+        <span>Reviewing changes in editor</span>
+        <Tooltip
+          content={
+            <div>
+              The file has opened in the editor to the right of this panel with inline diff
+              decorations.
+              <br />
+              <br />
+              <strong>To accept or reject changes:</strong>
+              <ul style={{ marginLeft: "20px", marginTop: "8px" }}>
+                <li>Use the CodeLens buttons at the top of the file to Accept/Reject All</li>
+                <li>Or use individual block buttons to accept/reject specific changes</li>
+                <li>Changes are auto-accepted when you save the file (Ctrl/Cmd+S)</li>
+              </ul>
+            </div>
+          }
+          position="bottom"
         >
+          <Icon>
+            <InfoCircleIcon color="#4394e5" />
+          </Icon>
+        </Tooltip>
+        <Button variant="link" onClick={onApplyChanges} className="continue-button">
           Continue
         </Button>
       </div>
@@ -64,7 +91,16 @@ const PrimaryActionButtons: React.FC<{
   onApply: () => void;
   onReject: () => void;
   isViewingDiff?: boolean;
-}> = ({ isNew, mode, actionTaken, onView, onViewWithDecorations, onApply, onReject, isViewingDiff }) => (
+}> = ({
+  isNew,
+  mode,
+  actionTaken,
+  onView,
+  onViewWithDecorations,
+  onApply,
+  onReject,
+  isViewingDiff,
+}) => (
   <Flex
     className="modified-file-actions"
     justifyContent={{ default: "justifyContentSpaceBetween" }}
@@ -86,7 +122,7 @@ const PrimaryActionButtons: React.FC<{
             </Button>
           </FlexItem>
         )}
-        
+
         {/* View in VSCode - Secondary action */}
         {!isNew && mode !== "agent" && (
           <FlexItem>
@@ -104,7 +140,7 @@ const PrimaryActionButtons: React.FC<{
         )}
       </Flex>
     </FlexItem>
-    
+
     {/* Accept/Reject buttons - only shown when not viewing diff */}
     {!isViewingDiff && (
       <FlexItem>
@@ -149,7 +185,7 @@ const QuickResponseButtons: React.FC<{
   onQuickResponse: (responseId: string) => void;
   onApply: () => void;
   onReject: () => void;
-}> = ({ quickResponses, isNew, mode, actionTaken, onView, onQuickResponse, onApply, onReject }) => (
+}> = ({ quickResponses, isNew, mode, actionTaken, onView, onQuickResponse }) => (
   <Flex
     className="modified-file-actions"
     justifyContent={{ default: "justifyContentSpaceBetween" }}
@@ -215,25 +251,29 @@ const ModifiedFileActions: React.FC<ModifiedFileActionsProps> = ({
 
   // If viewing diff and in agent mode, show status banner
   if (isFileApplied && mode === "agent") {
-    return <DiffStatusBanner onApplyChanges={() => {
-      // Apply changes automatically (like the old Continue logic)
-      onContinue?.();
-    }} />;
+    return (
+      <DiffStatusBanner
+        onApplyChanges={() => {
+          // Apply changes automatically (like the old Continue logic)
+          onContinue?.();
+        }}
+      />
+    );
   }
 
   // If quick responses available, show quick response buttons
   if (quickResponses && quickResponses.length > 0) {
     return (
-              <QuickResponseButtons
-          quickResponses={quickResponses}
-          isNew={isNew}
-          mode={mode}
-          actionTaken={actionTaken}
-          onView={() => onView(normalizedData.path, normalizedData.diff)}
-          onQuickResponse={onQuickResponse}
-          onApply={onApply}
-          onReject={onReject}
-        />
+      <QuickResponseButtons
+        quickResponses={quickResponses}
+        isNew={isNew}
+        mode={mode}
+        actionTaken={actionTaken}
+        onView={() => onView(normalizedData.path, normalizedData.diff)}
+        onQuickResponse={onQuickResponse}
+        onApply={onApply}
+        onReject={onReject}
+      />
     );
   }
 
@@ -244,7 +284,11 @@ const ModifiedFileActions: React.FC<ModifiedFileActionsProps> = ({
       mode={mode}
       actionTaken={actionTaken}
       onView={() => onView(normalizedData.path, normalizedData.diff)}
-      onViewWithDecorations={onViewWithDecorations ? () => onViewWithDecorations(normalizedData.path, normalizedData.diff) : undefined}
+      onViewWithDecorations={
+        onViewWithDecorations
+          ? () => onViewWithDecorations(normalizedData.path, normalizedData.diff)
+          : undefined
+      }
       onApply={onApply}
       onReject={onReject}
       isViewingDiff={isFileApplied}
