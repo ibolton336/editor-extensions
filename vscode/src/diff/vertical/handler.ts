@@ -21,6 +21,7 @@ export interface VerticalDiffHandlerOptions {
     fileContent?: ApplyState["fileContent"],
   ) => void;
   streamId?: string;
+  onDiffStatusChange?: (fileUri: string) => void;
 }
 
 export class VerticalDiffHandler implements vscode.Disposable {
@@ -110,6 +111,12 @@ export class VerticalDiffHandler implements vscode.Disposable {
 
     this.cancelled = true;
     this.refreshCodeLens();
+
+    // Notify diff status change
+    if (this.options.onDiffStatusChange) {
+      this.options.onDiffStatusChange(this.fileUri);
+    }
+
     this.dispose();
   }
 
@@ -239,6 +246,11 @@ export class VerticalDiffHandler implements vscode.Disposable {
 
       this.options.onStatusUpdate(status, numDiffs, this.editor.document.getText());
     }
+
+    // Notify diff status change
+    if (this.options.onDiffStatusChange) {
+      this.options.onDiffStatusChange(this.fileUri);
+    }
   }
 
   public updateLineDelta(fileUri: string, startLine: number, lineDelta: number) {
@@ -267,6 +279,11 @@ export class VerticalDiffHandler implements vscode.Disposable {
     this.clearIndexLineDecorations();
     this.editorToVerticalDiffCodeLens.delete(this.fileUri);
     this.refreshCodeLens();
+
+    // Notify diff status change
+    if (this.options.onDiffStatusChange) {
+      this.options.onDiffStatusChange(this.fileUri);
+    }
   }
 
   /**
@@ -359,6 +376,11 @@ export class VerticalDiffHandler implements vscode.Disposable {
     this.editorToVerticalDiffCodeLens.set(this.fileUri, codeLensBlocks);
     this.refreshCodeLens();
 
+    // Notify diff status change
+    if (this.options.onDiffStatusChange) {
+      this.options.onDiffStatusChange(this.fileUri);
+    }
+
     return myersDiffs;
   }
 
@@ -376,6 +398,11 @@ export class VerticalDiffHandler implements vscode.Disposable {
       });
 
       this.editorToVerticalDiffCodeLens.set(this.fileUri, blocks);
+
+      // Notify diff status change
+      if (this.options.onDiffStatusChange) {
+        this.options.onDiffStatusChange(this.fileUri);
+      }
     }
 
     if (this.deletionBuffer.length === 0) {
@@ -533,6 +560,11 @@ export class VerticalDiffHandler implements vscode.Disposable {
     this.editorToVerticalDiffCodeLens.set(this.fileUri, blocks);
 
     this.refreshCodeLens();
+
+    // Notify diff status change
+    if (this.options.onDiffStatusChange) {
+      this.options.onDiffStatusChange(this.fileUri);
+    }
   }
 
   /**

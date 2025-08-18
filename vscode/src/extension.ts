@@ -35,6 +35,7 @@ import {
   getTraceEnabled,
   getConfigKaiDemoMode,
   getConfigLogLevel,
+  getConfigAutoAcceptOnSave,
 } from "./utilities";
 import { getBundledProfiles } from "./utilities/profiles/bundledProfiles";
 import { getUserProfiles } from "./utilities/profiles/profileService";
@@ -58,12 +59,17 @@ class VsCodeExtension {
   private _onDidChange = new vscode.EventEmitter<Immutable<ExtensionData>>();
   readonly onDidChangeData = this._onDidChange.event;
   private listeners: vscode.Disposable[] = [];
+  private diffStatusBarItem: vscode.StatusBarItem;
 
   constructor(
     public readonly paths: ExtensionPaths,
     public readonly context: vscode.ExtensionContext,
     logger: winston.Logger,
   ) {
+    this.diffStatusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      100,
+    );
     this.data = produce(
       {
         localChanges: [],
@@ -297,6 +303,25 @@ class VsCodeExtension {
               updateConfigErrors(draft, paths().settingsYaml.fsPath);
             });
           }
+
+          // Auto-accept all diff decorations when file is saved (if enabled)
+          if (getConfigAutoAcceptOnSave() && this.state.verticalDiffManager) {
+            const fileUri = doc.uri.toString();
+            const handler = this.state.verticalDiffManager.getHandlerForFile(fileUri);
+            if (handler && handler.hasDiffForCurrentFile()) {
+              try {
+                await this.state.staticDiffAdapter?.acceptAll(doc.uri.fsPath);
+                this.state.logger.info(
+                  `Auto-accepted all diff decorations for ${doc.fileName} on save`,
+                );
+              } catch (error) {
+                this.state.logger.error(
+                  `Failed to auto-accept diff decorations on save for ${doc.fileName}:`,
+                  error,
+                );
+              }
+            }
+          }
         }),
       );
 
@@ -335,6 +360,9 @@ class VsCodeExtension {
 
       vscode.commands.executeCommand("konveyor.loadResultsFromDataFolder");
       this.state.logger.info("Extension initialized");
+
+      // Setup diff status bar item
+      this.setupDiffStatusBar();
     } catch (error) {
       this.state.logger.error("Error initializing extension", error);
       vscode.window.showErrorMessage(`Failed to initialize Konveyor extension: ${error}`);
@@ -358,9 +386,59 @@ class VsCodeExtension {
       ide,
     );
 
+    // Set up the diff status change callback
+    this.state.verticalDiffManager.onDiffStatusChange = (fileUri: string) => {
+      this.updateDiffStatusBarForFile(fileUri);
+    };
+
     this.state.staticDiffAdapter = new StaticDiffAdapter(this.state.verticalDiffManager);
 
     this.state.logger.info("Vertical diff system initialized with minimal protocol");
+  }
+
+  private setupDiffStatusBar(): void {
+    this.diffStatusBarItem.name = "Konveyor Diff Status";
+    this.diffStatusBarItem.tooltip = "Click to accept/reject all diff changes";
+    this.diffStatusBarItem.command = "konveyor.showDiffActions";
+    this.diffStatusBarItem.hide();
+
+    // Update status bar when active editor changes
+    this.listeners.push(
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        this.updateDiffStatusBar(editor);
+      }),
+    );
+
+    // Initial update
+    this.updateDiffStatusBar(vscode.window.activeTextEditor);
+  }
+
+  private updateDiffStatusBar(editor: vscode.TextEditor | undefined): void {
+    if (!editor || !this.state.verticalDiffManager) {
+      this.diffStatusBarItem.hide();
+      return;
+    }
+
+    const fileUri = editor.document.uri.toString();
+    const handler = this.state.verticalDiffManager.getHandlerForFile(fileUri);
+
+    if (handler && handler.hasDiffForCurrentFile()) {
+      const blocks = this.state.verticalDiffManager.fileUriToCodeLens.get(fileUri) || [];
+      const totalGreen = blocks.reduce((sum, b) => sum + b.numGreen, 0);
+      const totalRed = blocks.reduce((sum, b) => sum + b.numRed, 0);
+
+      this.diffStatusBarItem.text = `$(diff) ${totalGreen}+ ${totalRed}-`;
+      this.diffStatusBarItem.show();
+    } else {
+      this.diffStatusBarItem.hide();
+    }
+  }
+
+  public updateDiffStatusBarForFile(fileUri: string): void {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.uri.toString() === fileUri) {
+      this.updateDiffStatusBar(editor);
+    }
   }
 
   private registerWebviewProvider(): void {

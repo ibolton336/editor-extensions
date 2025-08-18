@@ -810,6 +810,55 @@ const commandsMap: (
         logger.error("Error clearing diff decorations:", error);
       }
     },
+
+    "konveyor.showDiffActions": async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        return;
+      }
+
+      const filePath = editor.document.fileName;
+      const fileUri = editor.document.uri.toString();
+
+      if (!state.verticalDiffManager) {
+        vscode.window.showInformationMessage("No active diff session");
+        return;
+      }
+
+      const handler = state.verticalDiffManager.getHandlerForFile(fileUri);
+      if (!handler || !handler.hasDiffForCurrentFile()) {
+        vscode.window.showInformationMessage("No active diff changes in this file");
+        return;
+      }
+
+      const blocks = state.verticalDiffManager.fileUriToCodeLens.get(fileUri) || [];
+      const totalGreen = blocks.reduce((sum, b) => sum + b.numGreen, 0);
+      const totalRed = blocks.reduce((sum, b) => sum + b.numRed, 0);
+
+      const action = await vscode.window.showQuickPick(
+        [
+          {
+            label: `$(check) Accept All Changes (${totalGreen}+ ${totalRed}-)`,
+            description: "Accept all diff changes in this file",
+            value: "accept",
+          },
+          {
+            label: `$(x) Reject All Changes`,
+            description: "Reject all diff changes in this file",
+            value: "reject",
+          },
+        ],
+        {
+          placeHolder: "Choose an action for all diff changes",
+        },
+      );
+
+      if (action?.value === "accept") {
+        await vscode.commands.executeCommand("konveyor.acceptDiff", filePath);
+      } else if (action?.value === "reject") {
+        await vscode.commands.executeCommand("konveyor.rejectDiff", filePath);
+      }
+    },
   };
 };
 

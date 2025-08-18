@@ -19,9 +19,27 @@ export class VerticalDiffCodeLensProvider implements vscode.CodeLensProvider {
       return [];
     }
 
-    return blocks.flatMap((block, index) => {
+    const codeLenses: vscode.CodeLens[] = [];
+
+    // Add accept/reject all buttons at the top of the file
+    const topRange = new vscode.Range(0, 0, 0, 0);
+    codeLenses.push(
+      new vscode.CodeLens(topRange, {
+        title: `✓ Accept All Changes (${blocks.reduce((sum, b) => sum + b.numGreen, 0)}+, ${blocks.reduce((sum, b) => sum + b.numRed, 0)}-)`,
+        command: "konveyor.acceptDiff",
+        arguments: [document.uri.fsPath],
+      }),
+      new vscode.CodeLens(topRange, {
+        title: "✗ Reject All Changes",
+        command: "konveyor.rejectDiff",
+        arguments: [document.uri.fsPath],
+      }),
+    );
+
+    // Add individual block accept/reject buttons
+    blocks.forEach((block, index) => {
       const range = new vscode.Range(block.start, 0, block.start, 0);
-      return [
+      codeLenses.push(
         new vscode.CodeLens(range, {
           title: `✓ Accept (${block.numGreen}+, ${block.numRed}-)`,
           command: "konveyor.acceptVerticalDiffBlock",
@@ -32,7 +50,9 @@ export class VerticalDiffCodeLensProvider implements vscode.CodeLensProvider {
           command: "konveyor.rejectVerticalDiffBlock",
           arguments: [fileUri, index],
         }),
-      ];
+      );
     });
+
+    return codeLenses;
   }
 }

@@ -27,6 +27,7 @@ export interface VerticalDiffCodeLens {
 
 export class VerticalDiffManager {
   public refreshCodeLens: () => void = () => {};
+  public onDiffStatusChange: ((fileUri: string) => void) | undefined;
 
   private fileUriToHandler: Map<string, VerticalDiffHandler> = new Map();
   fileUriToCodeLens: Map<string, VerticalDiffCodeLens[]> = new Map();
@@ -139,6 +140,11 @@ export class VerticalDiffManager {
     this.disableDocumentChangeListener();
 
     vscode.commands.executeCommand("setContext", "konveyor.diffVisible", false);
+
+    // Notify status change
+    if (this.onDiffStatusChange) {
+      this.onDiffStatusChange(fileUri);
+    }
   }
 
   async acceptRejectVerticalDiffBlock(accept: boolean, fileUri?: string, index?: number) {
@@ -179,6 +185,11 @@ export class VerticalDiffManager {
     }
 
     this.refreshCodeLens();
+
+    // Notify status change
+    if (this.onDiffStatusChange) {
+      this.onDiffStatusChange(fileUri);
+    }
   }
 
   async streamDiffLines(
@@ -240,6 +251,11 @@ export class VerticalDiffManager {
         });
       },
       streamId,
+      onDiffStatusChange: (fileUri) => {
+        if (this.onDiffStatusChange) {
+          this.onDiffStatusChange(fileUri);
+        }
+      },
     });
 
     if (!diffHandler) {
