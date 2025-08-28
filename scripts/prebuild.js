@@ -4,18 +4,22 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Determine branding from environment or default to konveyor
-const brandingName = process.env.BRANDING || "konveyor";
-
-console.log(`🔄 Running prebuild script with branding: ${brandingName}`);
-
-// Read branding strings from package.json
+// Read package.json to determine which brand we're building
 const packagePath = path.join(__dirname, "../vscode/package.json");
 const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
+// Use the package name to determine branding (mta or konveyor)
+const extensionName = packageJson.name;
+console.log(`🔄 Running prebuild for ${extensionName}...`);
+
+// Get branding configuration based on current package name
+// If it's already "mta", use mta branding; otherwise use konveyor
+const brandingName = extensionName === "mta" ? "mta" : "konveyor";
 let brandingStrings;
+
 try {
   brandingStrings = packageJson.branding[brandingName];
   if (!brandingStrings) {
@@ -128,7 +132,35 @@ if (packageJson.contributes?.submenus) {
   }));
 }
 
-// Skip activation events transformation - not needed for MTA branding
+// Copy assets - whatever exists in the directories gets used
+console.log(`🖼️  Copying assets for ${brandingStrings.productName}...`);
+
+// 1. Copy VSCode sidebar icon (whatever icon exists in sidebar-icons/)
+const iconSource = path.join(__dirname, "..", "assets/branding/sidebar-icons/icon-sidebar.png");
+const iconTarget = path.join(__dirname, "..", "vscode/resources/icon.png");
+
+if (fs.existsSync(iconSource)) {
+  fs.copyFileSync(iconSource, iconTarget);
+  console.log(`  ✅ VSCode sidebar icon copied`);
+} else {
+  console.warn(`  ⚠️  No sidebar icon found at: assets/branding/sidebar-icons/icon-sidebar.png`);
+}
+
+// 2. Copy webview avatar (whatever avatar exists in avatar-icons/)
+const avatarSource = path.join(__dirname, "..", "assets/branding/avatar-icons/avatar.svg");
+const avatarTarget = path.join(__dirname, "..", "webview-ui/public/avatarIcons/avatar.svg");
+
+if (fs.existsSync(avatarSource)) {
+  // Ensure target directory exists
+  const avatarDir = path.dirname(avatarTarget);
+  if (!fs.existsSync(avatarDir)) {
+    fs.mkdirSync(avatarDir, { recursive: true });
+  }
+  fs.copyFileSync(avatarSource, avatarTarget);
+  console.log(`  ✅ Webview avatar copied`);
+} else {
+  console.warn(`  ⚠️  No avatar found at: assets/branding/avatar-icons/avatar.svg`);
+}
 
 // Write the transformed package.json
 fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2));
