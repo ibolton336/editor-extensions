@@ -72,7 +72,7 @@ const handleUserInteractionPromise = async (
       resolve();
     }, 60000);
 
-    pendingInteractions.set(msg.id, async (response: any) => {
+    pendingInteractions.set(msg.id, async (_response: any) => {
       clearTimeout(timeout);
 
       await handleUserInteractionComplete(state, queueManager);
@@ -202,17 +202,17 @@ export const processMessageByType = async (
       const interaction = msg.data as KaiUserInteraction;
       switch (interaction.type) {
         case "modifiedFile": {
-          const workflow = state.workflowManager.getWorkflow();
-          // TODO (pgaikwad): handle this promise from quick response handler
-          await workflow?.resolveUserInteraction({
-            ...msg,
-            data: {
-              ...msg.data,
-              response: {
-                yesNo: fakeModifiedFileHandler(),
-              },
-            },
-          });
+          // Handle modifiedFile interactions like other user interactions
+          // The ModifiedFile message will be shown in UI with accept/reject buttons
+          // When user clicks, it will send FILE_RESPONSE which will resolve this interaction
+          try {
+            await handleUserInteractionPromise(msg, state, queueManager, pendingInteractions);
+          } catch (error) {
+            console.error("Error handling modifiedFile interaction:", error);
+            const workflow = state.workflowManager.getWorkflow();
+            msg.data.response = { yesNo: false };
+            await workflow?.resolveUserInteraction(msg);
+          }
           break;
         }
         case "yesNo": {
