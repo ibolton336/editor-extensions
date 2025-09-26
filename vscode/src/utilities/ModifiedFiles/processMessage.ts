@@ -202,17 +202,10 @@ export const processMessageByType = async (
       const interaction = msg.data as KaiUserInteraction;
       switch (interaction.type) {
         case "modifiedFile": {
-          // Handle modifiedFile interactions like other user interactions
-          // The ModifiedFile message will be shown in UI with accept/reject buttons
-          // When user clicks, it will send FILE_RESPONSE which will resolve this interaction
-          try {
-            await handleUserInteractionPromise(msg, state, queueManager, pendingInteractions);
-          } catch (error) {
-            console.error("Error handling modifiedFile interaction:", error);
-            const workflow = state.workflowManager.getWorkflow();
-            msg.data.response = { yesNo: false };
-            await workflow?.resolveUserInteraction(msg);
-          }
+          // Skip handling here - modifiedFile interactions are already handled by
+          // handleModifiedFileMessage when processing the ModifiedFile message.
+          // That handler sets up the pending interaction and shows the UI.
+          // We don't need to do anything here to avoid duplicate interaction setup.
           break;
         }
         case "yesNo": {
@@ -352,13 +345,3 @@ export const processMessageByType = async (
     }
   }
 };
-
-const alternateHandler = (): (() => boolean) => {
-  let current = true;
-  return (): boolean => {
-    current = !current;
-    return current;
-  };
-};
-
-const fakeModifiedFileHandler: () => boolean = alternateHandler();
