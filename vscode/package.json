@@ -75,18 +75,6 @@
         "icon": "$(beaker)"
       },
       {
-        "command": "konveyor.expandAllIssues",
-        "title": "Expand All",
-        "category": "Konveyor",
-        "icon": "$(expand-all)"
-      },
-      {
-        "command": "konveyor.expandSingleIssue",
-        "title": "Expand All",
-        "category": "Konveyor",
-        "icon": "$(expand-all)"
-      },
-      {
         "command": "konveyor.fixGroupOfIncidents",
         "title": "Resolve incidents",
         "category": "Konveyor",
@@ -167,79 +155,6 @@
         "category": "Konveyor"
       },
       {
-        "command": "konveyor.applyAll",
-        "title": "Apply All",
-        "category": "Konveyor",
-        "icon": "$(check)"
-      },
-      {
-        "command": "konveyor.discardAll",
-        "title": "Discard All",
-        "category": "Konveyor",
-        "icon": "$(discard)"
-      },
-      {
-        "command": "konveyor.applyFile",
-        "title": "Apply",
-        "category": "Konveyor",
-        "icon": "$(check)"
-      },
-      {
-        "command": "konveyor.discardFile",
-        "title": "Discard",
-        "category": "Konveyor",
-        "icon": "$(discard)"
-      },
-      {
-        "command": "konveyor.copyDiff",
-        "category": "Konveyor",
-        "title": "Copy Diff"
-      },
-      {
-        "command": "konveyor.copyPath",
-        "category": "Konveyor",
-        "title": "Copy Path"
-      },
-      {
-        "command": "konveyor.diffView.next",
-        "category": "Konveyor",
-        "title": "Go to Next File"
-      },
-      {
-        "command": "konveyor.diffView.prev",
-        "category": "Konveyor",
-        "title": "Go to Previous File"
-      },
-      {
-        "command": "konveyor.diffView.viewFix",
-        "category": "Konveyor",
-        "title": "View suggested fix"
-      },
-      {
-        "command": "konveyor.diffView.applyBlockInline",
-        "icon": "$(check)",
-        "category": "diffEditor",
-        "title": "Apply Block"
-      },
-      {
-        "command": "konveyor.diffView.applySelectionInline",
-        "icon": "$(check)",
-        "category": "diffEditor",
-        "title": "Apply Selection"
-      },
-      {
-        "command": "konveyor.diffView.applyBlock",
-        "icon": "$(arrow-left)",
-        "category": "diffEditor",
-        "title": "Apply Block"
-      },
-      {
-        "command": "konveyor.diffView.applySelection",
-        "icon": "$(arrow-left)",
-        "category": "diffEditor",
-        "title": "Apply Selection"
-      },
-      {
         "command": "konveyor.generateDebugArchive",
         "title": "Generate Debug Archive",
         "category": "Konveyor",
@@ -292,11 +207,6 @@
           "command": "konveyor.showResolutionPanel",
           "group": "navigation@2",
           "when": "view == konveyor.issueView"
-        },
-        {
-          "command": "konveyor.expandAllIssues",
-          "group": "navigation@3",
-          "when": "view == konveyor.issueView"
         }
       ],
       "view/item/context": [
@@ -309,11 +219,6 @@
           "command": "konveyor.fixIncident",
           "group": "inline@1",
           "when": "view == konveyor.issueView && viewItem == reference-item"
-        },
-        {
-          "command": "konveyor.expandSingleIssue",
-          "group": "inline@2",
-          "when": "view == konveyor.issueView && viewItem == incident-type-item"
         },
         {
           "command": "konveyor.openAnalysisDetails",
@@ -330,39 +235,7 @@
       "konveyor.submenu": [],
       "commandPalette": [
         {
-          "command": "konveyor.expandSingleIssue",
-          "when": "never"
-        },
-        {
           "command": "konveyor.loadRuleSets",
-          "when": "never"
-        },
-        {
-          "command": "konveyor.applyFile",
-          "when": "never"
-        },
-        {
-          "command": "konveyor.discardFile",
-          "when": "never"
-        },
-        {
-          "command": "konveyor.copyDiff",
-          "when": "never"
-        },
-        {
-          "command": "konveyor.copyPath",
-          "when": "never"
-        },
-        {
-          "command": "konveyor.diffView.next",
-          "when": "never"
-        },
-        {
-          "command": "konveyor.diffView.prev",
-          "when": "never"
-        },
-        {
-          "command": "konveyor.diffView.viewFix",
           "when": "never"
         }
       ]
