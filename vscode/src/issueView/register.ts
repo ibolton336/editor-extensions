@@ -3,7 +3,6 @@ import * as vscode from "vscode";
 import { FileItem, IncidentTypeItem, IssuesTreeDataProvider, ReferenceItem } from "./issueModel";
 import { Immutable } from "immer";
 import { ExtensionData, RuleSet } from "@editor-extensions/shared";
-import { expandAll, expandChildren } from "./expandCommands";
 import { executeExtensionCommand } from "../commands";
 import { EXTENSION_NAME } from "../utilities/constants";
 
@@ -35,14 +34,6 @@ export function registerIssueView({
       treeView.reveal(element, { select: false, focus: false, expand: 2 });
     }
   });
-
-  vscode.commands.registerCommand(`${EXTENSION_NAME}.expandAllIssues`, () =>
-    expandAll(model, treeView),
-  );
-  vscode.commands.registerCommand(
-    `${EXTENSION_NAME}.expandSingleIssue`,
-    (item: IncidentTypeItem | FileItem | ReferenceItem) => expandChildren(item, treeView),
-  );
 
   let firstLoad = true;
   let lastRuleSets: Immutable<RuleSet[]> = [];
