@@ -98,6 +98,7 @@ class VsCodeExtension {
         activeDecorators: {},
         solutionServerConnected: false,
         isWaitingForUserInteraction: false,
+        isProcessingQueuedMessages: false,
         analysisConfig: {
           labelSelector: "",
           labelSelectorValid: false,
