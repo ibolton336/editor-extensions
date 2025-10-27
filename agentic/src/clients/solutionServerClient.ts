@@ -135,6 +135,13 @@ export class SolutionServerClient {
 
     this.username = username;
     this.password = password;
+
+    // Clear any existing tokens to force fresh authentication with new credentials
+    this.bearerToken = null;
+    this.refreshToken = null;
+    this.tokenExpiresAt = null;
+    this.clearTokenRefreshTimer();
+
     this.logger.info("Credentials stored for authentication");
   }
 
