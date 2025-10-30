@@ -11,7 +11,8 @@ import ModifiedFileHeader from "./ModifiedFileHeader";
 import ModifiedFileDiffPreview from "./ModifiedFileDiffPreview";
 import ModifiedFileActions from "./ModifiedFileActions";
 import { useModifiedFileData } from "./useModifiedFileData";
-import { useExtensionStateContext } from "../../../context/ExtensionStateContext";
+import { useExtensionStore } from "../../../store/store";
+import { sendVscodeMessage as dispatch } from "../../../utils/vscodeMessaging";
 
 interface ModifiedFileMessageProps {
   data: ModifiedFileMessageValue;
@@ -29,12 +30,14 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
   const { path, isNew, isDeleted, diff, status, content, messageToken, fileName } = normalizedData;
   const [isViewingDiff, setIsViewingDiff] = useState(false);
 
-  // Get extension state to check for active decorators
-  const { state, dispatch } = useExtensionStateContext();
-  const hasActiveDecorators = !!(state.activeDecorators && state.activeDecorators[messageToken]);
+  // ✅ Selective subscriptions - only re-render when activeDecorators or chatMessages change
+  const activeDecorators = useExtensionStore((state) => state.activeDecorators);
+  const chatMessages = useExtensionStore((state) => state.chatMessages);
+
+  const hasActiveDecorators = !!(activeDecorators && activeDecorators[messageToken]);
 
   // Get status from global state for this specific message
-  const currentMessage = state.chatMessages.find(
+  const currentMessage = chatMessages.find(
     (msg) =>
       msg.messageToken === messageToken &&
       msg.kind === ChatMessageType.ModifiedFile &&
@@ -85,7 +88,7 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
     ) {
       setActionTaken(globalStatus);
     }
-  }, [globalStatus, currentMessage, messageToken, path, state.chatMessages]);
+  }, [globalStatus, currentMessage, messageToken, path, chatMessages]);
 
   // Clear viewing diff state when status is finalized
   useEffect(() => {

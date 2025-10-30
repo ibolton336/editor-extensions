@@ -15,7 +15,8 @@ import { SentMessage } from "./SentMessage";
 import { ReceivedMessage } from "./ReceivedMessage";
 import { ToolMessage } from "./ToolMessage";
 import { ModifiedFileMessage } from "./ModifiedFile";
-import { useExtensionStateContext } from "../../context/ExtensionStateContext";
+import { useExtensionStore } from "../../store/store";
+import { sendVscodeMessage as dispatch } from "../../utils/vscodeMessaging";
 import {
   Chatbot,
   ChatbotContent,
@@ -29,15 +30,15 @@ import LoadingIndicator from "./LoadingIndicator";
 import { MessageWrapper } from "./MessageWrapper";
 import { useScrollManagement } from "../../hooks/useScrollManagement";
 
-// Unified hook for both modes
-const useResolutionData = (state: any) => {
-  const {
-    chatMessages = [],
-    solutionState = "none",
-    solutionScope,
-    isFetchingSolution = false,
-    isAnalyzing,
-  } = state;
+// Unified hook for both modes - using Zustand store
+const useResolutionData = () => {
+  const chatMessages = useExtensionStore((state) => state.chatMessages);
+  const solutionState = useExtensionStore((state) => state.solutionState);
+  const solutionScope = useExtensionStore((state) => state.solutionScope);
+  const isFetchingSolution = useExtensionStore((state) => state.isFetchingSolution);
+  const isAnalyzing = useExtensionStore((state) => state.isAnalyzing);
+  const streamingMessageId = useExtensionStore((state) => state.streamingMessageId);
+  const streamingContent = useExtensionStore((state) => state.streamingContent);
 
   const isTriggeredByUser = useMemo(
     () => Array.isArray(solutionScope?.incidents) && solutionScope?.incidents?.length > 0,
@@ -68,6 +69,8 @@ const useResolutionData = (state: any) => {
     isFetchingSolution,
     isAnalyzing,
     solutionState,
+    streamingMessageId,
+    streamingContent,
   };
 };
 
@@ -117,19 +120,30 @@ const UserRequestMessages: React.FC<{
 };
 
 const ResolutionPage: React.FC = () => {
-  const { state, dispatch } = useExtensionStateContext();
-  const { solutionScope } = state;
+  // ✅ Selective subscriptions
+  const solutionScope = useExtensionStore((state) => state.solutionScope);
+  const isProcessingQueuedMessages = useExtensionStore((state) => state.isProcessingQueuedMessages);
+  const isWaitingForUserInteraction = useExtensionStore(
+    (state) => state.isWaitingForUserInteraction,
+  );
 
   // Unified data hook
-  const { isTriggeredByUser, hasNothingToView, chatMessages, isFetchingSolution, isAnalyzing } =
-    useResolutionData(state);
+  const {
+    isTriggeredByUser,
+    hasNothingToView,
+    chatMessages,
+    isFetchingSolution,
+    isAnalyzing,
+    streamingMessageId,
+    streamingContent,
+  } = useResolutionData();
 
   // Show processing state while:
   // - Fetching solution from LLM
   // - Processing queued messages (in non-agent mode)
   // - Waiting for user interaction
   const isProcessing =
-    isFetchingSolution || state.isProcessingQueuedMessages || state.isWaitingForUserInteraction;
+    isFetchingSolution || isProcessingQueuedMessages || isWaitingForUserInteraction;
 
   const { messageBoxRef, triggerScrollOnUserAction } = useScrollManagement(
     chatMessages,
@@ -180,11 +194,19 @@ const ResolutionPage: React.FC = () => {
       if (msg.kind === ChatMessageType.String) {
         const message = msg.value?.message as string;
         const selectedResponse = msg.selectedResponse;
+        // Only use streaming content if this is the LAST message and actively streaming
+        // This prevents out-of-order rendering and race conditions
+        const isLastMessage =
+          chatMessages[chatMessages.length - 1]?.messageToken === msg.messageToken;
+        const displayContent =
+          isLastMessage && streamingMessageId === msg.messageToken && streamingContent
+            ? streamingContent
+            : message;
         return (
           <MessageWrapper key={msg.messageToken}>
             <ReceivedMessage
               timestamp={msg.timestamp}
-              content={message}
+              content={displayContent}
               quickResponses={
                 Array.isArray(msg.quickResponses) && msg.quickResponses.length > 0
                   ? msg.quickResponses.map((response) => ({
@@ -202,7 +224,7 @@ const ResolutionPage: React.FC = () => {
 
       return null;
     });
-  }, [chatMessages, isFetchingSolution, isAnalyzing, triggerScrollOnUserAction]);
+  }, [chatMessages, isFetchingSolution, isAnalyzing, triggerScrollOnUserAction, streamingMessageId, streamingContent]);
 
   return (
     <Page

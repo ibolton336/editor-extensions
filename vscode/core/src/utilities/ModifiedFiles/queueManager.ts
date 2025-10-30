@@ -155,7 +155,7 @@ export class MessageQueueManager {
       this.logger.error("Error in queue processing:", error);
 
       // Add an error indicator to the chat
-      this.state.mutateData((draft) => {
+      this.state.mutateChatMessages((draft) => {
         draft.chatMessages.push({
           kind: ChatMessageType.String,
           messageToken: `queue-error-${Date.now()}`,
@@ -207,7 +207,7 @@ export async function handleUserInteractionComplete(
 ): Promise<void> {
   // CRITICAL: Always reset the waiting flag to allow queue processing to continue
   // Must set to false to unblock the queue processor
-  state.mutateData((draft) => {
+  state.mutateSolutionWorkflow((draft) => {
     draft.isWaitingForUserInteraction = false;
   });
 

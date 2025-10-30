@@ -184,7 +184,7 @@ export async function handleFileResponse(
       }
 
       // Update the chat message status in the centralized state (for Accept/Reject All consistency)
-      state.mutateData((draft) => {
+      state.mutateChatMessages((draft) => {
         const messageIndex = draft.chatMessages.findIndex(
           (msg) => msg.messageToken === messageToken,
         );
@@ -198,7 +198,7 @@ export async function handleFileResponse(
         }
       });
     } else if (responseId === "noChanges") {
-      state.mutateData((draft) => {
+      state.mutateChatMessages((draft) => {
         const messageIndex = draft.chatMessages.findIndex(
           (msg) => msg.messageToken === messageToken,
         );
@@ -218,7 +218,7 @@ export async function handleFileResponse(
       } catch (error) {
         logger.error("Error notifying solution server of rejection:", error);
       }
-      state.mutateData((draft) => {
+      state.mutateChatMessages((draft) => {
         const messageIndex = draft.chatMessages.findIndex(
           (msg) => msg.messageToken === messageToken,
         );

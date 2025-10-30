@@ -31,7 +31,7 @@ export const cleanupOnError = (
   error?: any,
 ) => {
   // Reset the waiting flag
-  state.mutateData((draft) => {
+  state.mutateSolutionWorkflow((draft) => {
     draft.isWaitingForUserInteraction = false;
   });
 
@@ -146,7 +146,7 @@ export const handleModifiedFileMessage = async (
       const diff = createFileDiff(fileState, filePath);
 
       // Add a chat message with quick responses for user interaction
-      state.mutateData((draft) => {
+      state.mutateChatMessages((draft) => {
         draft.chatMessages.push({
           kind: ChatMessageType.ModifiedFile,
           messageToken: msg.id,
@@ -168,7 +168,7 @@ export const handleModifiedFileMessage = async (
         });
       });
 
-      state.mutateData((draft) => {
+      state.mutateSolutionWorkflow((draft) => {
         draft.isWaitingForUserInteraction = true;
       });
 
@@ -188,7 +188,7 @@ export const handleModifiedFileMessage = async (
           console.error(
             `ModifiedFile interaction timeout for ${filePath} (${msg.id}) - auto-resolving to prevent stuck state`,
           );
-          state.mutateData((draft) => {
+          state.mutateChatMessages((draft) => {
             draft.chatMessages.push({
               kind: ChatMessageType.String,
               messageToken: `timeout-${msg.id}`,
@@ -197,11 +197,12 @@ export const handleModifiedFileMessage = async (
                 message: `Warning: File modification for ${filePath} timed out waiting for user response. Continuing...`,
               },
             });
+
             const i = draft.chatMessages.findIndex(
               (m) => m.kind === ChatMessageType.ModifiedFile && m.messageToken === msg.id,
             );
             if (i >= 0) {
-              (draft.chatMessages[i].value as ModifiedFileMessageValue).status = "rejected";
+              (draft.chatMessages[i].value as ModifiedFileMessageValue).status = "applied";
             }
           });
 
@@ -261,7 +262,7 @@ export const handleModifiedFileMessage = async (
     } catch (cleanupError) {
       console.error(`Error during cleanup for ${filePath}:`, cleanupError);
       // Even if cleanup fails, ensure the waiting flag is reset
-      state.mutateData((draft) => {
+      state.mutateSolutionWorkflow((draft) => {
         draft.isWaitingForUserInteraction = false;
       });
     }

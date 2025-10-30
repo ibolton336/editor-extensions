@@ -39,7 +39,7 @@ const waitForAnalysisCompletion = async (state: ExtensionState): Promise<void> =
 const resetStuckAnalysisFlags = (state: ExtensionState): void => {
   if (state.data.isAnalyzing || state.data.isAnalysisScheduled) {
     console.warn("Tasks interaction: Force resetting stuck analysis flags");
-    state.mutateData((draft) => {
+    state.mutateAnalysisState((draft) => {
       draft.isAnalyzing = false;
       draft.isAnalysisScheduled = false;
     });
@@ -58,7 +58,7 @@ const handleUserInteractionPromise = async (
   queueManager: MessageQueueManager,
   pendingInteractions: Map<string, (response: any) => void>,
 ): Promise<void> => {
-  state.mutateData((draft) => {
+  state.mutateSolutionWorkflow((draft) => {
     draft.isWaitingForUserInteraction = true;
   });
 
@@ -66,7 +66,7 @@ const handleUserInteractionPromise = async (
     const timeout = setTimeout(() => {
       console.warn(`User interaction timeout for message ${msg.id}`);
       pendingInteractions.delete(msg.id);
-      state.mutateData((draft) => {
+      state.mutateSolutionWorkflow((draft) => {
         draft.isWaitingForUserInteraction = false;
       });
       resolve();
@@ -110,7 +110,7 @@ const handleTasksInteraction = async (
     return;
   }
   // Show tasks to user and wait for response
-  state.mutateData((draft) => {
+  state.mutateChatMessages((draft) => {
     draft.chatMessages.push({
       kind: ChatMessageType.String,
       messageToken: msg.id,
@@ -161,7 +161,7 @@ export const processMessageByType = async (
   switch (msg.type) {
     case KaiWorkflowMessageType.ToolCall: {
       // Add or update tool call notification in chat
-      state.mutateData((draft) => {
+      state.mutateChatMessages((draft) => {
         const toolName = msg.data.name || "unnamed tool";
         const toolStatus = msg.data.status;
         // Check if the most recent message is a tool message with the same name
@@ -207,7 +207,7 @@ export const processMessageByType = async (
             const message = interaction.systemMessage.yesNo || "Would you like to proceed?";
 
             // Add the question to chat with quick responses
-            state.mutateData((draft) => {
+            state.mutateChatMessages((draft) => {
               // Always add the interaction message - don't skip based on existing interactions
               // Multiple interactions can be pending at the same time
               draft.chatMessages.push({
@@ -237,7 +237,7 @@ export const processMessageByType = async (
         case "choice": {
           try {
             const choices = interaction.systemMessage.choice || [];
-            state.mutateData((draft) => {
+            state.mutateChatMessages((draft) => {
               draft.chatMessages.push({
                 kind: ChatMessageType.String,
                 messageToken: msg.id,
@@ -276,6 +276,13 @@ export const processMessageByType = async (
       break;
     }
     case KaiWorkflowMessageType.LLMResponseChunk: {
+      // If waiting for user interaction, flush streaming buffer and skip processing
+      // This ensures chatMessages is the single source of truth when paused
+      if (state.data.isWaitingForUserInteraction) {
+        state.flushStreamingChat();
+        break;
+      }
+
       const chunk = msg.data as any;
       let content: string;
       if (typeof chunk.content === "string") {
@@ -291,8 +298,12 @@ export const processMessageByType = async (
       }
 
       if (msg.id !== state.lastMessageId) {
-        // This is a new message - create a new chat message
-        state.mutateData((draft) => {
+        // Flush any previous streaming message before starting a new one
+        state.flushStreamingChat();
+
+        // This is a new message - create a new chat message in state
+        // Use mutateChatMessages to avoid sending full state to webview
+        state.mutateChatMessages((draft) => {
           draft.chatMessages.push({
             kind: ChatMessageType.String,
             messageToken: msg.id,
@@ -303,23 +314,49 @@ export const processMessageByType = async (
           });
         });
         state.lastMessageId = msg.id;
+
+        // Start buffering for this new message
+        state.streamingChatBuffer = {
+          messageId: msg.id,
+          content: content,
+        };
       } else {
-        // This is a continuation of the current message - append to it
-        state.mutateData((draft) => {
-          if (draft.chatMessages.length > 0) {
-            draft.chatMessages[draft.chatMessages.length - 1].value.message += content;
-          } else {
-            // If there are no messages, create a new one instead
-            draft.chatMessages.push({
-              kind: ChatMessageType.String,
-              messageToken: msg.id,
-              timestamp: new Date().toISOString(),
-              value: {
-                message: content,
-              },
-            });
-          }
+        // This is a continuation of the current message - buffer it
+        if (!state.streamingChatBuffer || state.streamingChatBuffer.messageId !== msg.id) {
+          // Initialize buffer if it doesn't exist
+          const existingContent =
+            state.data.chatMessages.length > 0
+              ? state.data.chatMessages[state.data.chatMessages.length - 1].value.message
+              : "";
+          state.streamingChatBuffer = {
+            messageId: msg.id,
+            content: existingContent + content,
+          };
+        } else {
+          // Append to buffer
+          state.streamingChatBuffer.content += content;
+        }
+
+        // Send lightweight streaming chunk update to webview for immediate visual feedback
+        // This doesn't update state, just notifies the UI to show the streaming text
+        state.webviewProviders.forEach((provider) => {
+          provider.sendMessageToWebview({
+            type: "CHAT_STREAMING_CHUNK",
+            messageId: msg.id,
+            chunk: content,
+            timestamp: new Date().toISOString(),
+          });
         });
+
+        // Clear any existing timer
+        if (state.streamingChatBuffer.flushTimer) {
+          clearTimeout(state.streamingChatBuffer.flushTimer);
+        }
+
+        // Set a debounce timer to flush after 100ms of inactivity
+        state.streamingChatBuffer.flushTimer = setTimeout(() => {
+          state.flushStreamingChat();
+        }, 100);
       }
       break;
     }

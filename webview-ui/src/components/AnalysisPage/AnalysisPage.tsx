@@ -50,7 +50,8 @@ import {
   openResolutionPanel,
 } from "../../hooks/actions";
 import { useViolations } from "../../hooks/useViolations";
-import { useExtensionStateContext } from "../../context/ExtensionStateContext";
+import { useExtensionStore } from "../../store/store";
+import { sendVscodeMessage as dispatch } from "../../utils/vscodeMessaging";
 import { WalkthroughDrawer } from "./WalkthroughDrawer/WalkthroughDrawer";
 import { ConfigButton } from "./ConfigButton/ConfigButton";
 import { ServerStatusToggle } from "../ServerStatusToggle/ServerStatusToggle";
@@ -63,25 +64,27 @@ import GetSolutionDropdown from "../GetSolutionDropdown";
 import { Incident } from "@editor-extensions/shared";
 
 const AnalysisPage: React.FC = () => {
-  const { state, dispatch } = useExtensionStateContext();
-
-  const {
-    isAnalyzing,
-    isAnalysisScheduled,
-    isStartingServer,
-    isInitializingServer,
-    isFetchingSolution: isWaitingForSolution,
-    ruleSets: analysisResults,
-    enhancedIncidents,
-    configErrors: rawConfigErrors,
-    profiles,
-    activeProfileId,
-    serverState,
-    solutionServerEnabled,
-    isAgentMode,
-    solutionServerConnected,
-    isWaitingForUserInteraction,
-  } = state;
+  // ✅ Selective subscriptions - component only re-renders when these specific values change
+  const isAnalyzing = useExtensionStore((state) => state.isAnalyzing);
+  const isAnalysisScheduled = useExtensionStore((state) => state.isAnalysisScheduled);
+  const isStartingServer = useExtensionStore((state) => state.isStartingServer);
+  const isInitializingServer = useExtensionStore((state) => state.isInitializingServer);
+  const isWaitingForSolution = useExtensionStore((state) => state.isFetchingSolution);
+  const analysisResults = useExtensionStore((state) => state.ruleSets);
+  const enhancedIncidents = useExtensionStore((state) => state.enhancedIncidents);
+  const rawConfigErrors = useExtensionStore((state) => state.configErrors);
+  const profiles = useExtensionStore((state) => state.profiles);
+  const activeProfileId = useExtensionStore((state) => state.activeProfileId);
+  const serverState = useExtensionStore((state) => state.serverState);
+  const solutionServerEnabled = useExtensionStore((state) => state.solutionServerEnabled);
+  const isAgentMode = useExtensionStore((state) => state.isAgentMode);
+  const solutionServerConnected = useExtensionStore((state) => state.solutionServerConnected);
+  const isWaitingForUserInteraction = useExtensionStore(
+    (state) => state.isWaitingForUserInteraction,
+  );
+  const isProcessingQueuedMessages = useExtensionStore(
+    (state) => state.isProcessingQueuedMessages,
+  );
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [focusedIncident, setFocusedIncident] = useState<Incident | null>(null);
@@ -385,14 +388,14 @@ const AnalysisPage: React.FC = () => {
             </PageSection>
             {(isWaitingForSolution ||
               isWaitingForUserInteraction ||
-              state.isProcessingQueuedMessages) && (
+              isProcessingQueuedMessages) && (
               <Backdrop>
                 <div style={{ textAlign: "center", paddingTop: "15rem" }}>
                   <Spinner size="lg" />
                   <Title headingLevel="h2" size="lg">
                     {isWaitingForUserInteraction
                       ? "Waiting for user action..."
-                      : state.isProcessingQueuedMessages
+                      : isProcessingQueuedMessages
                         ? "Processing solution..."
                         : "Waiting for solution confirmation..."}
                   </Title>

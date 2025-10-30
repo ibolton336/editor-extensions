@@ -23,7 +23,8 @@ import CheckCircleIcon from "@patternfly/react-icons/dist/esm/icons/check-circle
 import PendingIcon from "@patternfly/react-icons/dist/esm/icons/pending-icon";
 import { PencilAltIcon } from "@patternfly/react-icons";
 
-import { useExtensionStateContext } from "../../../context/ExtensionStateContext";
+import { useExtensionStore } from "../../../store/store";
+import { sendVscodeMessage as dispatch } from "../../../utils/vscodeMessaging";
 import { TruncatedDescription } from "../../TruncatedDescription/TruncatedDescription";
 import { enableGenAI } from "../../../hooks/actions";
 
@@ -36,21 +37,24 @@ export function WalkthroughDrawer({
   onClose: () => void;
   drawerRef: React.RefObject<HTMLSpanElement>;
 }) {
-  const { state, dispatch } = useExtensionStateContext();
+  // ✅ Selective subscriptions
+  const profiles = useExtensionStore((state) => state.profiles);
+  const activeProfileId = useExtensionStore((state) => state.activeProfileId);
+  const configErrors = useExtensionStore((state) => state.configErrors);
 
-  const profile = state.profiles.find((p) => p.id === state.activeProfileId);
+  const profile = profiles.find((p) => p.id === activeProfileId);
 
   const labelSelectorValid = !!profile?.labelSelector?.trim();
 
   const rulesConfigured = !!profile?.useDefaultRules || (profile?.customRules?.length ?? 0) > 0;
 
-  const providerConnectionError = state.configErrors.some(
+  const providerConnectionError = configErrors.some(
     (error) => error.type === "provider-connection-failed",
   );
-  const providerNotConfigured = state.configErrors.some(
+  const providerNotConfigured = configErrors.some(
     (error) => error.type === "provider-not-configured",
   );
-  const genaiDisabled = state.configErrors.some((error) => error.type === "genai-disabled");
+  const genaiDisabled = configErrors.some((error) => error.type === "genai-disabled");
   const providerConfigured = !providerConnectionError && !providerNotConfigured && !genaiDisabled;
 
   const steps = [

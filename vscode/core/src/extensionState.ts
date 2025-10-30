@@ -26,6 +26,14 @@ export interface ExtensionState {
   issueModel: IssuesModel;
   data: Immutable<ExtensionData>;
   mutateData: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateChatMessages: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateAnalysisState: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateSolutionWorkflow: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateServerState: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateProfiles: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateConfigErrors: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateDecorators: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
+  mutateSettings: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
   profiles?: AnalysisProfile[];
   activeProfileId?: string;
   kaiFsCache: InMemoryCacheWithRevisions<string, string>;
@@ -53,4 +61,10 @@ export interface ExtensionState {
   staticDiffAdapter?: StaticDiffAdapter;
   currentQueueManager?: MessageQueueManager;
   pendingInteractionsMap?: Map<string, (response: any) => void>;
+  streamingChatBuffer?: {
+    messageId: string;
+    content: string;
+    flushTimer?: NodeJS.Timeout;
+  };
+  flushStreamingChat: () => void;
 }

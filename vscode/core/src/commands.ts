@@ -122,14 +122,14 @@ const commandsMap: (
         await solutionServerClient.disconnect();
 
         // Update state to reflect disconnected status
-        state.mutateData((draft) => {
+        state.mutateServerState((draft) => {
           draft.solutionServerConnected = false;
         });
 
         await solutionServerClient.connect();
 
         // Update state to reflect connected status
-        state.mutateData((draft) => {
+        state.mutateServerState((draft) => {
           draft.solutionServerConnected = true;
         });
 
@@ -139,7 +139,7 @@ const commandsMap: (
         window.showErrorMessage(`Failed to restart solution server: ${e}`);
 
         // Update state to reflect failed connection
-        state.mutateData((draft) => {
+        state.mutateServerState((draft) => {
           draft.solutionServerConnected = false;
         });
       }
@@ -188,7 +188,7 @@ const commandsMap: (
         const updatedIncidents = await state.solutionServerClient.getSuccessRate(currentIncidents);
 
         // Update the state with the enhanced incidents
-        state.mutateData((draft) => {
+        state.mutateAnalysisState((draft) => {
           draft.enhancedIncidents = updatedIncidents;
         });
       } catch (error: any) {
@@ -208,7 +208,7 @@ const commandsMap: (
     },
     [`${EXTENSION_NAME}.resetFetchingState`]: async () => {
       logger.warn("Manually resetting isFetchingSolution state");
-      state.mutateData((draft) => {
+      state.mutateSolutionWorkflow((draft) => {
         draft.isFetchingSolution = false;
         if (draft.solutionState === "started") {
           draft.solutionState = "failedOnSending";
@@ -533,16 +533,15 @@ const commandsMap: (
         }
 
         // Set activeDecorators to indicate decorators are being applied
-        state.mutateData((draft) => {
+        state.mutateDecorators((draft) => {
           if (!draft.activeDecorators) {
             draft.activeDecorators = {};
           }
           draft.activeDecorators[messageToken] = filePath;
-          logger.info(
-            `[Commands] Set activeDecorators for messageToken: ${messageToken}, filePath: ${filePath}`,
-          );
-          logger.info(`[Commands] Current activeDecorators:`, draft.activeDecorators);
         });
+        logger.info(
+          `[Commands] Set activeDecorators for messageToken: ${messageToken}, filePath: ${filePath}`,
+        );
 
         // Get original content
         const uri = Uri.file(filePath);
@@ -562,14 +561,14 @@ const commandsMap: (
         logger.error("Error in vertical diff:", error);
 
         // Clear activeDecorators on error
-        state.mutateData((draft) => {
-          if (draft.activeDecorators && draft.activeDecorators[messageToken]) {
+        state.mutateDecorators((draft) => {
+          if (draft.activeDecorators) {
             delete draft.activeDecorators[messageToken];
-            logger.debug(
-              `[Commands] Cleared activeDecorators on error for messageToken: ${messageToken}`,
-            );
           }
         });
+        logger.debug(
+          `[Commands] Cleared activeDecorators on error for messageToken: ${messageToken}`,
+        );
 
         vscode.window.showErrorMessage(`Failed to show diff: ${error}`);
       }

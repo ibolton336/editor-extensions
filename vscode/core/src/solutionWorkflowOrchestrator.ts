@@ -106,9 +106,11 @@ export class SolutionWorkflowOrchestrator {
     this.state.modifiedFiles.clear();
 
     // Reset state flags to prevent stale UI overlays
-    this.state.mutateData((draft) => {
+    this.state.mutateSolutionWorkflow((draft) => {
       draft.isWaitingForUserInteraction = false;
       draft.isProcessingQueuedMessages = false;
+    });
+    this.state.mutateChatMessages((draft) => {
       draft.chatMessages = [];
     });
   }
@@ -248,7 +250,7 @@ export class SolutionWorkflowOrchestrator {
     // Handle workflow errors
     this.workflow.on("error", (error: any) => {
       this.logger.error("Workflow error:", error);
-      this.state.mutateData((draft) => {
+      this.state.mutateSolutionWorkflow((draft) => {
         draft.isFetchingSolution = false;
         if (draft.solutionState === "started") {
           draft.solutionState = "failedOnSending";
@@ -282,7 +284,7 @@ export class SolutionWorkflowOrchestrator {
 
     // Set flag to indicate we're processing queued messages
     if (!this.agentMode && this.queueManager!.getQueueLength() > 0) {
-      this.state.mutateData((draft) => {
+      this.state.mutateSolutionWorkflow((draft) => {
         draft.isProcessingQueuedMessages = true;
       });
     }
@@ -337,7 +339,7 @@ export class SolutionWorkflowOrchestrator {
     }
 
     // Update state
-    this.state.mutateData((draft) => {
+    this.state.mutateSolutionWorkflow((draft) => {
       draft.isFetchingSolution = false;
       if (draft.solutionState === "started") {
         draft.solutionState = "failedOnSending";
@@ -345,8 +347,10 @@ export class SolutionWorkflowOrchestrator {
       if (isStringLengthError) {
         draft.isWaitingForUserInteraction = false;
       }
+    });
 
-      // Add error message to chat
+    // Add error message to chat
+    this.state.mutateChatMessages((draft) => {
       draft.chatMessages.push({
         messageToken: `error-${Date.now()}`,
         kind: ChatMessageType.String,
@@ -377,10 +381,13 @@ export class SolutionWorkflowOrchestrator {
   private finalCleanup(): void {
     this.logger.info("Performing final cleanup");
 
-    this.state.mutateData((draft) => {
+    this.state.mutateSolutionWorkflow((draft) => {
       draft.isFetchingSolution = false;
       draft.solutionState = "received";
       draft.isProcessingQueuedMessages = false;
+    });
+
+    this.state.mutateAnalysisState((draft) => {
       draft.isAnalyzing = false;
       draft.isAnalysisScheduled = false;
     });
@@ -444,7 +451,7 @@ export class SolutionWorkflowOrchestrator {
 
       // Reset analysis flags but keep isFetchingSolution true
       // The resolver will reset isFetchingSolution when everything is complete
-      this.state.mutateData((draft) => {
+      this.state.mutateAnalysisState((draft) => {
         draft.isAnalyzing = false;
         draft.isAnalysisScheduled = false;
       });
@@ -461,11 +468,17 @@ export class SolutionWorkflowOrchestrator {
     this.state.solutionServerClient.setClientId(clientId);
     this.logger.debug("Client ID set", { clientId });
 
-    this.state.mutateData((draft) => {
+    this.state.mutateSolutionWorkflow((draft) => {
       draft.isFetchingSolution = true;
       draft.solutionState = "started";
       draft.solutionScope = scope;
+    });
+
+    this.state.mutateChatMessages((draft) => {
       draft.chatMessages = [];
+    });
+
+    this.state.mutateDecorators((draft) => {
       draft.activeDecorators = {};
     });
   }
@@ -535,9 +548,12 @@ export class SolutionWorkflowOrchestrator {
     } catch (error: any) {
       this.logger.error("Error in getSolution", { error });
 
-      this.state.mutateData((draft) => {
+      this.state.mutateSolutionWorkflow((draft) => {
         draft.solutionState = "failedOnSending";
         draft.isFetchingSolution = false;
+      });
+
+      this.state.mutateChatMessages((draft) => {
         draft.chatMessages.push({
           messageToken: `m${Date.now()}`,
           kind: ChatMessageType.String,
