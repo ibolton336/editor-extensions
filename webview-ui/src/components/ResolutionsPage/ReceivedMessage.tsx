@@ -21,7 +21,7 @@ interface ReceivedMessageProps {
   isProcessing?: boolean;
 }
 
-export const ReceivedMessage: React.FC<ReceivedMessageProps> = ({
+export const ReceivedMessage: React.FC<ReceivedMessageProps> = React.memo(({
   content,
   extraContent,
   isLoading: _isLoading,
@@ -95,6 +95,8 @@ export const ReceivedMessage: React.FC<ReceivedMessageProps> = ({
       additionalRehypePlugins={[rehypeRaw, rehypeSanitize]}
     />
   );
-};
+});
+
+ReceivedMessage.displayName = 'ReceivedMessage';
 
 export default ReceivedMessage;

@@ -11,7 +11,8 @@ import ModifiedFileHeader from "./ModifiedFileHeader";
 import ModifiedFileDiffPreview from "./ModifiedFileDiffPreview";
 import ModifiedFileActions from "./ModifiedFileActions";
 import { useModifiedFileData } from "./useModifiedFileData";
-import { useExtensionStateContext } from "../../../context/ExtensionStateContext";
+import { useExtensionStore } from "../../../store/store";
+import { sendVscodeMessage as dispatch } from "../../../utils/vscodeMessaging";
 
 interface ModifiedFileMessageProps {
   data: ModifiedFileMessageValue;
@@ -19,7 +20,7 @@ interface ModifiedFileMessageProps {
   onUserAction?: () => void;
 }
 
-export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
+export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = React.memo(({
   data,
   timestamp,
   onUserAction,
@@ -29,12 +30,17 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
   const { path, isNew, isDeleted, diff, status, content, messageToken, fileName } = normalizedData;
   const [isViewingDiff, setIsViewingDiff] = useState(false);
 
-  // Get extension state to check for active decorators
-  const { state, dispatch } = useExtensionStateContext();
-  const hasActiveDecorators = !!(state.activeDecorators && state.activeDecorators[messageToken]);
+  // Check if this is a read-only message (just for context, no actions)
+  const isReadOnly = data.readOnly === true;
+
+  // ✅ Selective subscriptions - only re-render when activeDecorators or chatMessages change
+  const activeDecorators = useExtensionStore((state) => state.activeDecorators);
+  const chatMessages = useExtensionStore((state) => state.chatMessages);
+
+  const hasActiveDecorators = !!(activeDecorators && activeDecorators[messageToken]);
 
   // Get status from global state for this specific message
-  const currentMessage = state.chatMessages.find(
+  const currentMessage = chatMessages.find(
     (msg) =>
       msg.messageToken === messageToken &&
       msg.kind === ChatMessageType.ModifiedFile &&
@@ -85,7 +91,7 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
     ) {
       setActionTaken(globalStatus);
     }
-  }, [globalStatus, currentMessage, messageToken, path, state.chatMessages]);
+  }, [globalStatus, currentMessage, messageToken, path, chatMessages]);
 
   // Clear viewing diff state when status is finalized
   useEffect(() => {
@@ -249,6 +255,30 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
     );
   }
 
+  // Render read-only version (just for context, no actions)
+  if (isReadOnly) {
+    return (
+      <div className="modified-file-message modified-file-readonly">
+        <Card className="modified-file-card readonly-card">
+          <ModifiedFileHeader
+            isNew={isNew}
+            fileName={fileName}
+            timestamp={timestamp}
+            readOnly={true}
+          />
+          <CardBody>
+            <ModifiedFileDiffPreview diff={diff} path={path} />
+            <div className="readonly-notice">
+              <small style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+                This change will be available for review at the end
+              </small>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+    );
+  }
+
   // Render full version when no action has been taken
   return (
     <>
@@ -275,6 +305,8 @@ export const ModifiedFileMessage: React.FC<ModifiedFileMessageProps> = ({
       </div>
     </>
   );
-};
+});
+
+ModifiedFileMessage.displayName = 'ModifiedFileMessage';
 
 export default ModifiedFileMessage;

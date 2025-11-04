@@ -1,0 +1,129 @@
+/**
+ * Batch Review Modal Styles - Wizard Edition
+ * Optimized layout for guided file-by-file review
+ */
+
+/* Modal container */
+.batch-review-modal .pf-v5-c-modal-box {
+  max-width: 90vw !important;
+  max-height: 90vh !important;
+}
+
+/* Wizard container */
+.batch-review-modal .pf-v5-c-wizard {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Wizard step content */
+.batch-review-wizard-step {
+  padding: var(--pf-v5-global--spacer--md);
+}
+
+/* File info section */
+.batch-review-file-info {
+  margin-bottom: var(--pf-v5-global--spacer--lg);
+  padding: var(--pf-v5-global--spacer--md);
+  background-color: var(--pf-v5-global--BackgroundColor--200);
+  border-radius: var(--pf-v5-global--BorderRadius--sm);
+}
+
+.batch-review-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Primary action - Review in Editor */
+.batch-review-primary-action {
+  text-align: center;
+}
+
+.batch-review-primary-action button {
+  font-size: var(--pf-v5-global--FontSize--lg);
+  font-weight: var(--pf-v5-global--FontWeight--semi-bold);
+}
+
+/* Diff container */
+.batch-review-diff-container {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+/* File actions */
+.batch-review-file-actions button {
+  min-height: 44px;
+}
+
+/* Summary page */
+.batch-review-summary {
+  padding: var(--pf-v5-global--spacer--md);
+}
+
+.batch-review-summary h3 {
+  margin-bottom: var(--pf-v5-global--spacer--md);
+  font-size: var(--pf-v5-global--FontSize--xl);
+}
+
+/* Wizard navigation customization */
+.batch-review-modal .pf-v5-c-wizard__nav-item {
+  font-size: var(--pf-v5-global--FontSize--sm);
+}
+
+/* Success state in wizard steps */
+.batch-review-modal .pf-v5-c-wizard__nav-item.pf-m-success {
+  background-color: var(--pf-v5-global--success-color--100);
+}
+
+/* Danger state in wizard steps */
+.batch-review-modal .pf-v5-c-wizard__nav-item.pf-m-danger {
+  background-color: var(--pf-v5-global--danger-color--100);
+}
+
+/* Dark theme support */
+.pf-v5-theme-dark .batch-review-file-info {
+  background-color: var(--pf-v5-global--BackgroundColor--300);
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+  .batch-review-modal .pf-v5-c-modal-box {
+    max-width: 95vw !important;
+  }
+
+  .batch-review-wizard-step {
+    padding: var(--pf-v5-global--spacer--sm);
+  }
+
+  .batch-review-file-info {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .batch-review-diff-container {
+    max-height: 200px;
+  }
+}
+
+/* Accessibility improvements */
+.batch-review-modal button:focus {
+  outline: 2px solid var(--pf-v5-global--primary-color--100);
+  outline-offset: 2px;
+}
+
+/* Smooth transitions */
+.batch-review-wizard-step {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

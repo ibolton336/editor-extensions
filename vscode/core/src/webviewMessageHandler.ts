@@ -31,11 +31,7 @@ import {
 } from "@editor-extensions/shared";
 
 import { getBundledProfiles } from "./utilities/profiles/bundledProfiles";
-import {
-  getUserProfiles,
-  saveUserProfiles,
-  setActiveProfileId,
-} from "./utilities/profiles/profileService";
+import { getUserProfiles, saveUserProfiles } from "./utilities/profiles/profileService";
 import { handleQuickResponse } from "./utilities/ModifiedFiles/handleQuickResponse";
 import { handleFileResponse } from "./utilities/ModifiedFiles/handleFileResponse";
 import winston from "winston";
@@ -72,11 +68,18 @@ const actions: {
     saveUserProfiles(state.extensionContext, updated);
 
     const allProfiles = [...getBundledProfiles(), ...updated];
-    setActiveProfileId(profile.id, state);
 
-    state.mutateData((draft) => {
+    // Save active profile ID to workspace state (don't use setActiveProfileId - it calls mutateData)
+    await state.extensionContext.workspaceState.update("activeProfileId", profile.id);
+
+    // Use mutateProfiles to broadcast profile updates to webview
+    state.mutateProfiles((draft) => {
       draft.profiles = allProfiles;
       draft.activeProfileId = profile.id;
+    });
+
+    // Update config errors
+    state.mutateConfigErrors((draft) => {
       updateConfigErrorsFromActiveProfile(draft);
     });
   },
@@ -88,13 +91,27 @@ const actions: {
     saveUserProfiles(state.extensionContext, filtered);
 
     const fullProfiles = [...getBundledProfiles(), ...filtered];
-    state.mutateData((draft) => {
-      draft.profiles = fullProfiles;
+    const currentActiveProfileId = state.data.activeProfileId;
 
-      if (draft.activeProfileId === profileId) {
-        draft.activeProfileId = fullProfiles[0]?.id ?? "";
-        state.extensionContext.workspaceState.update("activeProfileId", draft.activeProfileId);
-      }
+    // Update active profile if the deleted profile was active
+    if (currentActiveProfileId === profileId) {
+      const newActiveProfileId = fullProfiles[0]?.id ?? "";
+      state.extensionContext.workspaceState.update("activeProfileId", newActiveProfileId);
+
+      // Broadcast profile update with new active profile
+      state.mutateProfiles((draft) => {
+        draft.profiles = fullProfiles;
+        draft.activeProfileId = newActiveProfileId;
+      });
+    } else {
+      // Just update profiles list
+      state.mutateProfiles((draft) => {
+        draft.profiles = fullProfiles;
+      });
+    }
+
+    // Update config errors
+    state.mutateConfigErrors((draft) => {
       updateConfigErrorsFromActiveProfile(draft);
     });
   },
@@ -120,14 +137,19 @@ const actions: {
     const fullProfiles = [...getBundledProfiles(), ...userProfiles];
 
     // Check if we're updating the active profile
-    const isActiveProfile = state.data.activeProfileId === originalId;
+    const currentActiveProfileId = state.data.activeProfileId;
+    const isActiveProfile = currentActiveProfileId === originalId;
 
-    state.mutateData((draft) => {
+    // Update profiles and active profile ID if necessary
+    state.mutateProfiles((draft) => {
       draft.profiles = fullProfiles;
-
-      if (draft.activeProfileId === originalId) {
+      if (currentActiveProfileId === originalId) {
         draft.activeProfileId = updatedProfile.id;
       }
+    });
+
+    // Update config errors
+    state.mutateConfigErrors((draft) => {
       updateConfigErrorsFromActiveProfile(draft);
     });
 
@@ -151,11 +173,19 @@ const actions: {
     }
 
     // Check if profile is actually changing
-    const isProfileChanging = state.data.activeProfileId !== profileId;
+    const currentActiveProfileId = state.data.activeProfileId;
+    const isProfileChanging = currentActiveProfileId !== profileId;
 
-    setActiveProfileId(profileId, state);
-    state.mutateData((draft) => {
+    // Save active profile ID to workspace state (don't use setActiveProfileId - it calls mutateData)
+    await state.extensionContext.workspaceState.update("activeProfileId", profileId);
+
+    // Broadcast active profile change to webview
+    state.mutateProfiles((draft) => {
       draft.activeProfileId = profileId;
+    });
+
+    // Update config errors
+    state.mutateConfigErrors((draft) => {
       updateConfigErrorsFromActiveProfile(draft);
     });
 
@@ -207,8 +237,20 @@ const actions: {
   QUICK_RESPONSE: async ({ responseId, messageToken }, state) => {
     handleQuickResponse(messageToken, responseId, state);
   },
-  FILE_RESPONSE: async ({ responseId, messageToken, path, content }, state) => {
-    handleFileResponse(messageToken, responseId, path, content, state);
+  FILE_RESPONSE: async ({ responseId, messageToken, path, content }, state, logger) => {
+    await handleFileResponse(messageToken, responseId, path, content, state);
+
+    // Remove from pendingBatchReview after processing individual file
+    state.mutateSolutionWorkflow((draft) => {
+      if (draft.pendingBatchReview) {
+        draft.pendingBatchReview = draft.pendingBatchReview.filter(
+          (file) => file.messageToken !== messageToken,
+        );
+        logger.info(`Removed file from pendingBatchReview: ${path}`, {
+          remaining: draft.pendingBatchReview.length,
+        });
+      }
+    });
   },
 
   [RUN_ANALYSIS]() {
@@ -285,6 +327,16 @@ const actions: {
       console.log("Continue decision: ", { responseId, hasChanges });
 
       await handleFileResponse(messageToken, responseId, path, finalContent, state);
+
+      // Remove from pendingBatchReview after processing
+      state.mutateSolutionWorkflow((draft) => {
+        if (draft.pendingBatchReview) {
+          draft.pendingBatchReview = draft.pendingBatchReview.filter(
+            (file) => file.messageToken !== messageToken,
+          );
+        }
+      });
+
       logger.info(`File state continued with response: ${responseId}`, {
         path,
         messageToken,
@@ -292,6 +344,44 @@ const actions: {
     } catch (error) {
       logger.error("Error handling CONTINUE_WITH_FILE_STATE:", error);
       await handleFileResponse(messageToken, "reject", path, content, state);
+    }
+  },
+
+  BATCH_APPLY_ALL: async ({ files }, state, logger) => {
+    try {
+      logger.info(`BATCH_APPLY_ALL: Applying ${files.length} files`);
+
+      for (const file of files) {
+        await handleFileResponse(file.messageToken, "apply", file.path, file.content, state);
+      }
+
+      // Clear all pendingBatchReview
+      state.mutateSolutionWorkflow((draft) => {
+        draft.pendingBatchReview = [];
+      });
+
+      logger.info(`BATCH_APPLY_ALL: Successfully applied ${files.length} files`);
+    } catch (error) {
+      logger.error("Error in BATCH_APPLY_ALL:", error);
+    }
+  },
+
+  BATCH_REJECT_ALL: async ({ files }, state, logger) => {
+    try {
+      logger.info(`BATCH_REJECT_ALL: Rejecting ${files.length} files`);
+
+      for (const file of files) {
+        await handleFileResponse(file.messageToken, "reject", file.path, undefined, state);
+      }
+
+      // Clear all pendingBatchReview
+      state.mutateSolutionWorkflow((draft) => {
+        draft.pendingBatchReview = [];
+      });
+
+      logger.info(`BATCH_REJECT_ALL: Successfully rejected ${files.length} files`);
+    } catch (error) {
+      logger.error("Error in BATCH_REJECT_ALL:", error);
     }
   },
 };

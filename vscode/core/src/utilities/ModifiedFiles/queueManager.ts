@@ -1,4 +1,8 @@
-import { KaiWorkflowMessage, KaiInteractiveWorkflow } from "@editor-extensions/agentic";
+import {
+  KaiWorkflowMessage,
+  KaiInteractiveWorkflow,
+  KaiWorkflowMessageType,
+} from "@editor-extensions/agentic";
 import { ExtensionState } from "src/extensionState";
 import { ChatMessageType } from "@editor-extensions/shared";
 import { Logger } from "winston";
@@ -67,12 +71,9 @@ export class MessageQueueManager {
     const processInterval = 100; // Check every 100ms
 
     this.processingTimer = setInterval(() => {
-      // Only process if we're not already processing and not waiting for user
-      if (
-        !this.isProcessingQueue &&
-        !this.state.data.isWaitingForUserInteraction &&
-        this.messageQueue.length > 0
-      ) {
+      // Only process if we're not already processing and have messages
+      // The processQueuedMessages method will handle filtering based on user interaction state
+      if (!this.isProcessingQueue && this.messageQueue.length > 0) {
         this.processQueuedMessages().catch((error) => {
           this.logger.error("Error in background queue processing:", error);
         });
@@ -91,8 +92,23 @@ export class MessageQueueManager {
   }
 
   /**
+   * Check if a message type can be processed during user interaction
+   * LLM chunks, responses, tool calls, and errors should flow through
+   * ModifiedFile and UserInteraction messages should wait
+   */
+  private canProcessDuringUserInteraction(messageType: number): boolean {
+    return (
+      messageType === KaiWorkflowMessageType.LLMResponseChunk || // 0
+      messageType === KaiWorkflowMessageType.LLMResponse || // 1
+      messageType === KaiWorkflowMessageType.ToolCall || // 3
+      messageType === KaiWorkflowMessageType.Error // 5
+    );
+  }
+
+  /**
    * Processes queued messages one at a time atomically
    * Stops immediately when a blocking message triggers user interaction
+   * Continues processing streaming chunks and tool calls even during user interaction
    */
   async processQueuedMessages(): Promise<void> {
     // Prevent concurrent queue processing
@@ -106,10 +122,17 @@ export class MessageQueueManager {
       return;
     }
 
-    // Don't process if waiting for user interaction
+    // If waiting for user interaction, only process certain message types
     if (this.state.data.isWaitingForUserInteraction) {
-      this.logger.debug("Waiting for user interaction, skipping queue processing");
-      return;
+      const canProcessAny = this.messageQueue.some((msg) =>
+        this.canProcessDuringUserInteraction(msg.type),
+      );
+      if (!canProcessAny) {
+        this.logger.debug(
+          "Waiting for user interaction and no processable messages in queue, skipping",
+        );
+        return;
+      }
     }
 
     this.logger.info(`Starting queue processing, ${this.messageQueue.length} messages in queue`);
@@ -117,9 +140,22 @@ export class MessageQueueManager {
 
     try {
       // Process messages one at a time from the front of the queue
-      while (this.messageQueue.length > 0 && !this.state.data.isWaitingForUserInteraction) {
-        // Take the first message from queue
-        const msg = this.messageQueue.shift()!;
+      while (this.messageQueue.length > 0) {
+        // Peek at the first message
+        const msg = this.messageQueue[0];
+
+        // If waiting for user interaction, check if this message can be processed
+        if (this.state.data.isWaitingForUserInteraction) {
+          if (!this.canProcessDuringUserInteraction(msg.type)) {
+            this.logger.debug(
+              `Waiting for user interaction, pausing at message type ${msg.type}, id: ${msg.id}`,
+            );
+            break;
+          }
+        }
+
+        // Remove from queue and process
+        this.messageQueue.shift();
         this.logger.info(
           `Processing message: ${msg.type}, id: ${msg.id}, remaining in queue: ${this.messageQueue.length}`,
         );
@@ -137,12 +173,11 @@ export class MessageQueueManager {
             this,
           );
 
-          // If this message triggered user interaction, stop processing
+          // If this message triggered user interaction, stop processing blocking messages
           if (this.state.data.isWaitingForUserInteraction) {
             this.logger.info(
-              `Message ${msg.id} triggered user interaction, stopping queue processing`,
+              `Message ${msg.id} triggered user interaction, will continue processing non-blocking messages`,
             );
-            break;
           }
         } catch (error) {
           this.logger.error(`Error processing queued message ${msg.id}:`, error);
@@ -155,7 +190,7 @@ export class MessageQueueManager {
       this.logger.error("Error in queue processing:", error);
 
       // Add an error indicator to the chat
-      this.state.mutateData((draft) => {
+      this.state.mutateChatMessages((draft) => {
         draft.chatMessages.push({
           kind: ChatMessageType.String,
           messageToken: `queue-error-${Date.now()}`,
@@ -207,7 +242,7 @@ export async function handleUserInteractionComplete(
 ): Promise<void> {
   // CRITICAL: Always reset the waiting flag to allow queue processing to continue
   // Must set to false to unblock the queue processor
-  state.mutateData((draft) => {
+  state.mutateSolutionWorkflow((draft) => {
     draft.isWaitingForUserInteraction = false;
   });
 

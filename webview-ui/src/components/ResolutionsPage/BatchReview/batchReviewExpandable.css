@@ -1,0 +1,178 @@
+/**
+ * Batch Review Expandable Footer Styles
+ * Compact, expandable panel that slides up from the footer
+ */
+
+/* Base container */
+.batch-review-expandable {
+  background-color: var(--pf-v5-global--BackgroundColor--200);
+  border: 1px solid var(--pf-v5-global--BorderColor--100);
+  border-radius: var(--pf-v5-global--BorderRadius--sm);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: var(--pf-v5-global--spacer--sm);
+  overflow: hidden;
+}
+
+/* Collapsed state - minimal height */
+.batch-review-expandable.collapsed {
+  max-height: 48px;
+}
+
+.batch-review-expandable.collapsed:hover {
+  background-color: var(--pf-v5-global--BackgroundColor--150);
+  cursor: pointer;
+}
+
+/* Expanded state - takes up more space */
+.batch-review-expandable.expanded {
+  max-height: 50vh; /* 50% of viewport height */
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Expand trigger button */
+.batch-review-expand-trigger {
+  width: 100%;
+  padding: var(--pf-v5-global--spacer--sm) var(--pf-v5-global--spacer--md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--pf-v5-global--Color--100);
+  font-size: var(--pf-v5-global--FontSize--sm);
+  transition: background-color 0.2s ease;
+}
+
+.batch-review-expand-trigger:hover {
+  background-color: var(--pf-v5-global--BackgroundColor--150);
+}
+
+.batch-review-expand-trigger:focus {
+  outline: 2px solid var(--pf-v5-global--primary-color--100);
+  outline-offset: -2px;
+}
+
+/* Expandable header */
+.batch-review-expandable-header {
+  padding: var(--pf-v5-global--spacer--sm) var(--pf-v5-global--spacer--md);
+  background-color: var(--pf-v5-global--BackgroundColor--100);
+  border-bottom: 1px solid var(--pf-v5-global--BorderColor--100);
+}
+
+.batch-review-title {
+  font-weight: var(--pf-v5-global--FontWeight--semi-bold);
+  font-size: var(--pf-v5-global--FontSize--md);
+}
+
+/* Current file section - compact */
+.batch-review-current-file {
+  padding: var(--pf-v5-global--spacer--sm) var(--pf-v5-global--spacer--md);
+  background-color: var(--pf-v5-global--BackgroundColor--150);
+  border-bottom: 1px solid var(--pf-v5-global--BorderColor--100);
+}
+
+.batch-review-filename-compact {
+  font-size: var(--pf-v5-global--FontSize--sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Actions section - horizontal layout for minimal height */
+.batch-review-actions {
+  padding: var(--pf-v5-global--spacer--sm) var(--pf-v5-global--spacer--md);
+  background-color: var(--pf-v5-global--BackgroundColor--100);
+}
+
+/* Decorator status message */
+.batch-review-decorator-status {
+  font-size: var(--pf-v5-global--FontSize--sm);
+  color: var(--pf-v5-global--Color--200);
+  font-style: italic;
+}
+
+/* Bulk actions - minimal */
+.batch-review-bulk-actions {
+  padding: var(--pf-v5-global--spacer--xs) var(--pf-v5-global--spacer--md);
+  background-color: var(--pf-v5-global--BackgroundColor--100);
+  border-top: 1px solid var(--pf-v5-global--BorderColor--100);
+}
+
+/* Button sizing for compact layout */
+.batch-review-actions button {
+  white-space: nowrap;
+}
+
+.batch-review-actions .pf-v5-c-button.pf-m-control {
+  min-width: 32px;
+  padding: 0.25rem 0.5rem;
+}
+
+/* Dark theme support */
+.pf-v5-theme-dark .batch-review-expandable {
+  background-color: var(--pf-v5-global--BackgroundColor--300);
+  border-color: var(--pf-v5-global--BorderColor--200);
+}
+
+.pf-v5-theme-dark .batch-review-expandable-header,
+.pf-v5-theme-dark .batch-review-actions,
+.pf-v5-theme-dark .batch-review-bulk-actions {
+  background-color: var(--pf-v5-global--BackgroundColor--200);
+  border-color: var(--pf-v5-global--BorderColor--200);
+}
+
+.pf-v5-theme-dark .batch-review-current-file {
+  background-color: var(--pf-v5-global--BackgroundColor--250);
+}
+
+/* Responsive - even more compact on mobile */
+@media (max-width: 768px) {
+  .batch-review-expandable.expanded {
+    max-height: 60vh;
+  }
+
+  .batch-review-actions .pf-v5-l-flex {
+    flex-wrap: wrap;
+  }
+
+  .batch-review-filename-compact {
+    font-size: var(--pf-v5-global--FontSize--xs);
+  }
+}
+
+/* Animation for expand/collapse */
+@keyframes slideUpFromBottom {
+  from {
+    max-height: 48px;
+    opacity: 0.8;
+  }
+  to {
+    max-height: 50vh;
+    opacity: 1;
+  }
+}
+
+@keyframes slideDownToBottom {
+  from {
+    max-height: 50vh;
+    opacity: 1;
+  }
+  to {
+    max-height: 48px;
+    opacity: 0.8;
+  }
+}
+
+.batch-review-expandable.expanded {
+  animation: slideUpFromBottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.batch-review-expandable.collapsed {
+  animation: slideDownToBottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Ensure smooth rendering */
+.batch-review-expandable {
+  contain: layout;
+  will-change: max-height;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}

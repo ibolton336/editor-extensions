@@ -57,7 +57,11 @@ export class AnalysisIssueFix extends BaseNode {
       inputFileContent: undefined,
       inputIncidents: [],
     };
-    this.logger.silly("AnalysisIssueFixRouter called with state", { state });
+    // Don't log full state - can cause "Invalid string length" error with large states
+    this.logger.silly("AnalysisIssueFixRouter called", {
+      currentIdx: state.currentIdx,
+      totalIncidents: state.inputIncidentsByUris.length,
+    });
     // we have to fix the incidents if there's at least one present in state
     if (state.currentIdx < state.inputIncidentsByUris.length) {
       const nextEntry = state.inputIncidentsByUris[state.currentIdx];
@@ -164,7 +168,11 @@ export class AnalysisIssueFix extends BaseNode {
       nextState.inputAllReasoning = accumulated.reasoning;
       nextState.inputAllModifiedFiles = accumulated.uris;
     }
-    this.logger.silly("AnalysisIssueFixRouter returning nextState", { nextState });
+    // Don't log full state - can cause "Invalid string length" error
+    this.logger.silly("AnalysisIssueFixRouter returning", {
+      hasOutputAllResponses: !!nextState.outputAllResponses,
+      responseCount: nextState.outputAllResponses?.length || 0,
+    });
     return nextState;
   }
 
@@ -172,7 +180,12 @@ export class AnalysisIssueFix extends BaseNode {
   async fixAnalysisIssue(
     state: typeof AnalysisIssueFixInputState.State,
   ): Promise<typeof AnalysisIssueFixOutputState.State> {
-    this.logger.silly("AnalysisIssueFix called with state", { state });
+    // Don't log full state - can cause "Invalid string length" error
+    this.logger.silly("AnalysisIssueFix called", {
+      hasInputFileUri: !!state.inputFileUri,
+      hasInputFileContent: !!state.inputFileContent,
+      incidentCount: state.inputIncidents?.length || 0,
+    });
     if (!state.inputFileUri || !state.inputFileContent || state.inputIncidents.length === 0) {
       return {
         outputUpdatedFile: undefined,

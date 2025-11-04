@@ -39,7 +39,7 @@ const waitForAnalysisCompletion = async (state: ExtensionState): Promise<void> =
 const resetStuckAnalysisFlags = (state: ExtensionState): void => {
   if (state.data.isAnalyzing || state.data.isAnalysisScheduled) {
     console.warn("Tasks interaction: Force resetting stuck analysis flags");
-    state.mutateData((draft) => {
+    state.mutateAnalysisState((draft) => {
       draft.isAnalyzing = false;
       draft.isAnalysisScheduled = false;
     });
@@ -58,7 +58,7 @@ const handleUserInteractionPromise = async (
   queueManager: MessageQueueManager,
   pendingInteractions: Map<string, (response: any) => void>,
 ): Promise<void> => {
-  state.mutateData((draft) => {
+  state.mutateSolutionWorkflow((draft) => {
     draft.isWaitingForUserInteraction = true;
   });
 
@@ -66,7 +66,7 @@ const handleUserInteractionPromise = async (
     const timeout = setTimeout(() => {
       console.warn(`User interaction timeout for message ${msg.id}`);
       pendingInteractions.delete(msg.id);
-      state.mutateData((draft) => {
+      state.mutateSolutionWorkflow((draft) => {
         draft.isWaitingForUserInteraction = false;
       });
       resolve();
@@ -110,7 +110,7 @@ const handleTasksInteraction = async (
     return;
   }
   // Show tasks to user and wait for response
-  state.mutateData((draft) => {
+  state.mutateChatMessages((draft) => {
     draft.chatMessages.push({
       kind: ChatMessageType.String,
       messageToken: msg.id,
@@ -161,7 +161,7 @@ export const processMessageByType = async (
   switch (msg.type) {
     case KaiWorkflowMessageType.ToolCall: {
       // Add or update tool call notification in chat
-      state.mutateData((draft) => {
+      state.mutateChatMessages((draft) => {
         const toolName = msg.data.name || "unnamed tool";
         const toolStatus = msg.data.status;
         // Check if the most recent message is a tool message with the same name
@@ -207,7 +207,7 @@ export const processMessageByType = async (
             const message = interaction.systemMessage.yesNo || "Would you like to proceed?";
 
             // Add the question to chat with quick responses
-            state.mutateData((draft) => {
+            state.mutateChatMessages((draft) => {
               // Always add the interaction message - don't skip based on existing interactions
               // Multiple interactions can be pending at the same time
               draft.chatMessages.push({
@@ -237,7 +237,7 @@ export const processMessageByType = async (
         case "choice": {
           try {
             const choices = interaction.systemMessage.choice || [];
-            state.mutateData((draft) => {
+            state.mutateChatMessages((draft) => {
               draft.chatMessages.push({
                 kind: ChatMessageType.String,
                 messageToken: msg.id,
@@ -276,6 +276,8 @@ export const processMessageByType = async (
       break;
     }
     case KaiWorkflowMessageType.LLMResponseChunk: {
+      // Continue's approach: Direct updates, no buffering/throttling
+      // React and Zustand handle rendering efficiently
       const chunk = msg.data as any;
       let content: string;
       if (typeof chunk.content === "string") {
@@ -291,8 +293,12 @@ export const processMessageByType = async (
       }
 
       if (msg.id !== state.lastMessageId) {
-        // This is a new message - create a new chat message
-        state.mutateData((draft) => {
+        // New message - create initial entry
+        state.logger.info(`[Streaming] New message, content length: ${content.length}`, {
+          messageId: msg.id,
+          preview: content.substring(0, 50),
+        });
+        state.mutateChatMessages((draft) => {
           draft.chatMessages.push({
             kind: ChatMessageType.String,
             messageToken: msg.id,
@@ -304,20 +310,23 @@ export const processMessageByType = async (
         });
         state.lastMessageId = msg.id;
       } else {
-        // This is a continuation of the current message - append to it
-        state.mutateData((draft) => {
+        // Continuation - append directly to last message
+        state.mutateChatMessages((draft) => {
           if (draft.chatMessages.length > 0) {
-            draft.chatMessages[draft.chatMessages.length - 1].value.message += content;
-          } else {
-            // If there are no messages, create a new one instead
-            draft.chatMessages.push({
-              kind: ChatMessageType.String,
-              messageToken: msg.id,
-              timestamp: new Date().toISOString(),
-              value: {
-                message: content,
-              },
-            });
+            const lastMessage = draft.chatMessages[draft.chatMessages.length - 1];
+            if (lastMessage.messageToken === msg.id) {
+              const oldLength = (lastMessage.value.message as string)?.length || 0;
+              lastMessage.value.message += content;
+              lastMessage.timestamp = new Date().toISOString();
+              const newLength = (lastMessage.value.message as string)?.length || 0;
+              state.logger.info(`[Streaming] Appended chunk`, {
+                messageId: msg.id,
+                oldLength,
+                newLength,
+                chunkSize: content.length,
+                preview: content.substring(0, 30),
+              });
+            }
           }
         });
       }

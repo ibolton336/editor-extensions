@@ -6,14 +6,10 @@ import {
 import { createTwoFilesPatch, createPatch } from "diff";
 import { ExtensionState } from "src/extensionState";
 import { Uri } from "vscode";
-import {
-  ModifiedFileState,
-  ChatMessageType,
-  ModifiedFileMessageValue,
-} from "@editor-extensions/shared";
+import { ModifiedFileState, ChatMessageType } from "@editor-extensions/shared";
 // Import path module for platform-agnostic path handling
 import { processModifiedFile } from "./processModifiedFile";
-import { MessageQueueManager, handleUserInteractionComplete } from "./queueManager";
+import { MessageQueueManager } from "./queueManager";
 
 /**
  * Performs comprehensive cleanup of resources and state variables when an error occurs
@@ -31,7 +27,7 @@ export const cleanupOnError = (
   error?: any,
 ) => {
   // Reset the waiting flag
-  state.mutateData((draft) => {
+  state.mutateSolutionWorkflow((draft) => {
     draft.isWaitingForUserInteraction = false;
   });
 
@@ -115,7 +111,7 @@ export const handleModifiedFileMessage = async (
   processedTokens: Set<string>,
   pendingInteractions: Map<string, (response: any) => void>,
   state: ExtensionState,
-  queueManager: MessageQueueManager,
+  _queueManager: MessageQueueManager, // Kept for API compatibility but not used
   eventEmitter?: { emit: (event: string, ...args: any[]) => void },
 ) => {
   // Ensure we're dealing with a ModifiedFile message
@@ -145,8 +141,12 @@ export const handleModifiedFileMessage = async (
       const isDeleted = !isNew && fileState.modifiedContent.trim() === "";
       const diff = createFileDiff(fileState, filePath);
 
-      // Add a chat message with quick responses for user interaction
-      state.mutateData((draft) => {
+      // STRATEGY: Two-part display for ModifiedFile messages
+      // 1. Show read-only diff in chat for context (with LLM's explanation)
+      // 2. Accumulate in pendingBatchReview for interactive review later
+
+      // Part 1: Add read-only diff to chat for context
+      state.mutateChatMessages((draft) => {
         draft.chatMessages.push({
           kind: ChatMessageType.ModifiedFile,
           messageToken: msg.id,
@@ -154,92 +154,47 @@ export const handleModifiedFileMessage = async (
           value: {
             path: filePath,
             content: fileState.modifiedContent,
-            originalContent: fileState.originalContent, // Use from ModifiedFileState
+            originalContent: fileState.originalContent,
             isNew: isNew,
             isDeleted: isDeleted,
             diff: diff,
-            messageToken: msg.id, // Add message token to value for reference
+            messageToken: msg.id,
             userInteraction: msg.data.userInteraction,
+            readOnly: true, // Mark as read-only (no Apply/Reject buttons in chat)
           },
-          quickResponses: [
-            { id: "apply", content: "Apply" },
-            { id: "reject", content: "Reject" },
-          ],
+          // No quickResponses - this is just for context
         });
       });
 
-      state.mutateData((draft) => {
-        draft.isWaitingForUserInteraction = true;
-      });
-
-      // Set up the pending interaction using the same mechanism as UserInteraction messages
-      // This ensures that handleFileResponse can properly trigger queue processing
-      //
-      // CRITICAL: In non-agent mode, we DON'T await this Promise because:
-      // 1. The queue processor would block waiting for user response
-      // 2. User response comes from webview via handleFileResponse
-      // 3. This creates a potential deadlock
-      //
-      // Instead, we just set up the pending interaction and return immediately.
-      // The resolver will be called when the user responds via handleFileResponse.
-      const interactionPromise = new Promise<void>((resolve) => {
-        // Set up a timeout to prevent stuck interactions (5 minutes)
-        const timeoutId = setTimeout(async () => {
-          console.error(
-            `ModifiedFile interaction timeout for ${filePath} (${msg.id}) - auto-resolving to prevent stuck state`,
-          );
-          state.mutateData((draft) => {
-            draft.chatMessages.push({
-              kind: ChatMessageType.String,
-              messageToken: `timeout-${msg.id}`,
-              timestamp: new Date().toISOString(),
-              value: {
-                message: `Warning: File modification for ${filePath} timed out waiting for user response. Continuing...`,
-              },
-            });
-            const i = draft.chatMessages.findIndex(
-              (m) => m.kind === ChatMessageType.ModifiedFile && m.messageToken === msg.id,
-            );
-            if (i >= 0) {
-              (draft.chatMessages[i].value as ModifiedFileMessageValue).status = "rejected";
-            }
-          });
-
-          if (pendingInteractions.has(msg.id)) {
-            pendingInteractions.delete(msg.id);
-          }
-
-          // Use the centralized interaction completion handler to properly resume queue
-          await handleUserInteractionComplete(state, queueManager);
-
-          resolve();
-        }, 300000); // 5 minutes
-
-        pendingInteractions.set(msg.id, async (_response: any) => {
-          try {
-            // Clear the timeout since we got a real response
-            clearTimeout(timeoutId);
-
-            // Use the centralized interaction completion handler
-            await handleUserInteractionComplete(state, queueManager);
-
-            // Remove the entry from pendingInteractions to prevent memory leaks
-            pendingInteractions.delete(msg.id);
-            resolve();
-          } catch (error) {
-            clearTimeout(timeoutId);
-            console.error(`Error in ModifiedFile resolver for messageId: ${msg.id}:`, error);
-            // Remove the entry from pendingInteractions to prevent memory leaks
-            pendingInteractions.delete(msg.id);
-            resolve();
-          }
+      // Part 2: Accumulate for batch review
+      state.mutateSolutionWorkflow((draft) => {
+        if (!draft.pendingBatchReview) {
+          draft.pendingBatchReview = [];
+        }
+        draft.pendingBatchReview.push({
+          messageToken: msg.id,
+          path: filePath,
+          diff: diff,
+          content: fileState.modifiedContent,
+          originalContent: fileState.originalContent,
+          isNew: isNew,
+          isDeleted: isDeleted,
         });
       });
 
-      // Store the promise for cleanup but DON'T await it here
-      // This allows the queue processor to continue processing other messages
-      // The promise will resolve when the user responds
-      modifiedFilesPromises.push(interactionPromise);
+      // BATCH REVIEW APPROACH:
+      // ModifiedFile messages do NOT create pending interactions.
+      // They just accumulate in pendingBatchReview and the user reviews them
+      // all at once at the end via BatchReviewSummary.
+      //
+      // This allows the queue to continue processing other messages (LLM chunks,
+      // tool calls, etc.) without blocking on individual file responses.
+      //
+      // The BatchReviewSummary component shows all pending files and allows
+      // the user to "Review Changes", "Apply All", or "Reject All".
+      //
+      // Individual file responses are handled via handleFileResponse, which
+      // updates the status in pendingBatchReview without needing a resolver.
     }
   } catch (err) {
     console.error(`Error in handleModifiedFileMessage for ${filePath}:`, err);
@@ -261,7 +216,7 @@ export const handleModifiedFileMessage = async (
     } catch (cleanupError) {
       console.error(`Error during cleanup for ${filePath}:`, cleanupError);
       // Even if cleanup fails, ensure the waiting flag is reset
-      state.mutateData((draft) => {
+      state.mutateSolutionWorkflow((draft) => {
         draft.isWaitingForUserInteraction = false;
       });
     }

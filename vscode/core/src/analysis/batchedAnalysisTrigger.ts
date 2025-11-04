@@ -23,7 +23,7 @@ export class BatchedAnalysisTrigger {
 
   async notifyFileChanges(change: FileChange) {
     if (this.enableHotRerun) {
-      this.extensionState.mutateData((draft) => {
+      this.extensionState.mutateAnalysisState((draft) => {
         draft.isAnalysisScheduled = true;
       });
       // hot re-run if enabled
@@ -78,6 +78,9 @@ export class BatchedAnalysisTrigger {
         return;
       }
       await this.runPartialAnalysis();
+      this.extensionState.mutateAnalysisState((draft) => {
+        draft.isAnalysisScheduled = false;
+      });
     });
   }
 

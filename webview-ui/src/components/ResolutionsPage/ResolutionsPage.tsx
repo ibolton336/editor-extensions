@@ -15,7 +15,8 @@ import { SentMessage } from "./SentMessage";
 import { ReceivedMessage } from "./ReceivedMessage";
 import { ToolMessage } from "./ToolMessage";
 import { ModifiedFileMessage } from "./ModifiedFile";
-import { useExtensionStateContext } from "../../context/ExtensionStateContext";
+import { useExtensionStore } from "../../store/store";
+import { sendVscodeMessage as dispatch } from "../../utils/vscodeMessaging";
 import {
   Chatbot,
   ChatbotContent,
@@ -28,16 +29,16 @@ import { ChatCard } from "./ChatCard/ChatCard";
 import LoadingIndicator from "./LoadingIndicator";
 import { MessageWrapper } from "./MessageWrapper";
 import { useScrollManagement } from "../../hooks/useScrollManagement";
+import { BatchReviewExpandable } from "./BatchReview";
 
-// Unified hook for both modes
-const useResolutionData = (state: any) => {
-  const {
-    chatMessages = [],
-    solutionState = "none",
-    solutionScope,
-    isFetchingSolution = false,
-    isAnalyzing,
-  } = state;
+// Unified hook for both modes - using Zustand store
+const useResolutionData = () => {
+  // Force re-render on every chatMessages change by using object identity
+  const chatMessages = useExtensionStore((state) => state.chatMessages);
+  const solutionState = useExtensionStore((state) => state.solutionState);
+  const solutionScope = useExtensionStore((state) => state.solutionScope);
+  const isFetchingSolution = useExtensionStore((state) => state.isFetchingSolution);
+  const isAnalyzing = useExtensionStore((state) => state.isAnalyzing);
 
   const isTriggeredByUser = useMemo(
     () => Array.isArray(solutionScope?.incidents) && solutionScope?.incidents?.length > 0,
@@ -71,12 +72,13 @@ const useResolutionData = (state: any) => {
   };
 };
 
-// Component for rendering user request messages
+// Component for rendering user request messages - memoized to prevent unnecessary re-renders
 const UserRequestMessages: React.FC<{
   solutionScope: any;
   onIncidentClick: (incident: Incident) => void;
   isReadOnly: boolean;
-}> = ({ solutionScope, onIncidentClick, isReadOnly }) => {
+  // eslint-disable-next-line react/prop-types
+}> = React.memo(({ solutionScope, onIncidentClick, isReadOnly }) => {
   const USER_REQUEST_MESSAGES: ChatMessage[] = [
     {
       kind: ChatMessageType.String,
@@ -114,22 +116,28 @@ const UserRequestMessages: React.FC<{
       ))}
     </>
   );
-};
+});
+
+UserRequestMessages.displayName = "UserRequestMessages";
 
 const ResolutionPage: React.FC = () => {
-  const { state, dispatch } = useExtensionStateContext();
-  const { solutionScope } = state;
+  // ✅ Selective subscriptions
+  const solutionScope = useExtensionStore((state) => state.solutionScope);
+  const isProcessingQueuedMessages = useExtensionStore((state) => state.isProcessingQueuedMessages);
+  const isWaitingForUserInteraction = useExtensionStore(
+    (state) => state.isWaitingForUserInteraction,
+  );
 
   // Unified data hook
   const { isTriggeredByUser, hasNothingToView, chatMessages, isFetchingSolution, isAnalyzing } =
-    useResolutionData(state);
+    useResolutionData();
 
   // Show processing state while:
   // - Fetching solution from LLM
   // - Processing queued messages (in non-agent mode)
   // - Waiting for user interaction
   const isProcessing =
-    isFetchingSolution || state.isProcessingQueuedMessages || state.isWaitingForUserInteraction;
+    isFetchingSolution || isProcessingQueuedMessages || isWaitingForUserInteraction;
 
   const { messageBoxRef, triggerScrollOnUserAction } = useScrollManagement(
     chatMessages,
@@ -140,7 +148,7 @@ const ResolutionPage: React.FC = () => {
   const handleIncidentClick = (incident: Incident) =>
     dispatch(openFile(incident.uri, incident.lineNumber ?? 0));
 
-  // Render chat messages
+  // Render chat messages - memoized to prevent unnecessary re-renders
   const renderChatMessages = useCallback(() => {
     if (!Array.isArray(chatMessages) || chatMessages?.length === 0) {
       return null;
@@ -202,7 +210,7 @@ const ResolutionPage: React.FC = () => {
 
       return null;
     });
-  }, [chatMessages, isFetchingSolution, isAnalyzing, triggerScrollOnUserAction]);
+  }, [chatMessages, isAnalyzing, triggerScrollOnUserAction]);
 
   return (
     <Page
@@ -241,9 +249,13 @@ const ResolutionPage: React.FC = () => {
 
             {/* Render all content */}
             {renderChatMessages()}
+
+            {/* Batch Review Summary - shown when files are accumulated */}
+            {/* <BatchReviewSummary /> */}
           </MessageBox>
         </ChatbotContent>
         <ChatbotFooter>
+          <BatchReviewExpandable />
           <ChatbotFootnote
             className="footnote"
             label="Always review AI generated content prior to use."

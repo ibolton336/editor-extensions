@@ -391,7 +391,8 @@ export class KaiInteractiveWorkflow
   async analysisIssueFixRouterEdge(
     state: typeof AnalysisIssueFixOrchestratorState.State,
   ): Promise<string | string[]> {
-    this.logger.debug(`Edge function called with state:`, {
+    // Use silly level to avoid expensive logging in production
+    this.logger.silly(`Edge function called with state:`, {
       hasInputFileContent: !!state.inputFileContent,
       hasInputFileUri: !!state.inputFileUri,
       hasInputIncidents: !!state.inputIncidents && state.inputIncidents.length > 0,
