@@ -89,6 +89,7 @@ export enum ChatMessageType {
   JSON = "JsonChatMessage",
   Tool = "ToolChatMessage",
   ModifiedFile = "ModifiedFileChatMessage",
+  BatchReview = "BatchReviewChatMessage",
 }
 
 export interface QuickResponse {
@@ -111,6 +112,16 @@ export interface ChatMessage {
   userInteraction?: any;
 }
 
+export interface PendingBatchReviewFile {
+  messageToken: string;
+  path: string;
+  diff: string;
+  content: string;
+  originalContent?: string;
+  isNew: boolean;
+  isDeleted: boolean;
+}
+
 export interface ExtensionData {
   workspaceRoot: string;
   ruleSets: RuleSet[];
@@ -126,7 +137,6 @@ export interface ExtensionData {
   solutionScope?: Scope;
   chatMessages: ChatMessage[];
   configErrors: ConfigError[];
-  llmErrors: LLMError[];
   profiles: AnalysisProfile[];
   activeProfileId: string | null;
   solutionServerEnabled: boolean;
@@ -134,6 +144,8 @@ export interface ExtensionData {
   activeDecorators?: Record<string, string>;
   solutionServerConnected: boolean;
   isWaitingForUserInteraction?: boolean;
+  isProcessingQueuedMessages?: boolean;
+  pendingBatchReview?: PendingBatchReviewFile[];
 }
 
 export type ConfigErrorType =
@@ -146,22 +158,6 @@ export type ConfigErrorType =
   | "missing-auth-credentials"
   | "genai-disabled"
   | "solution-server-disconnected";
-
-export type LLMErrorType =
-  | "workflow-initialization-failed"
-  | "llm-request-failed"
-  | "llm-response-parse-failed"
-  | "llm-timeout"
-  | "llm-rate-limit"
-  | "llm-context-limit"
-  | "llm-unknown-error";
-
-export interface LLMError {
-  type: LLMErrorType;
-  message: string;
-  error?: string;
-  timestamp: string;
-}
 
 export interface ConfigError {
   type: ConfigErrorType;
@@ -214,54 +210,6 @@ export const createConfigError = {
     message: "Solution server is not connected",
     error:
       "The solution server is enabled but not connected. AI-powered solution suggestions may not work properly.",
-  }),
-};
-
-export const createLLMError = {
-  workflowInitializationFailed: (error?: string): LLMError => ({
-    type: "workflow-initialization-failed",
-    message: "Failed to initialize AI workflow. Please check your model configuration.",
-    error,
-    timestamp: new Date().toISOString(),
-  }),
-
-  llmRequestFailed: (error?: string): LLMError => ({
-    type: "llm-request-failed",
-    message: "Failed to get response from AI model. Please try again.",
-    error,
-    timestamp: new Date().toISOString(),
-  }),
-
-  llmResponseParseFailed: (error?: string): LLMError => ({
-    type: "llm-response-parse-failed",
-    message: "Failed to parse AI model response. The response format may be invalid.",
-    error,
-    timestamp: new Date().toISOString(),
-  }),
-
-  llmTimeout: (): LLMError => ({
-    type: "llm-timeout",
-    message: "AI model request timed out. Please try again or check your connection.",
-    timestamp: new Date().toISOString(),
-  }),
-
-  llmRateLimit: (): LLMError => ({
-    type: "llm-rate-limit",
-    message: "AI model rate limit exceeded. Please wait a moment before trying again.",
-    timestamp: new Date().toISOString(),
-  }),
-
-  llmContextLimit: (): LLMError => ({
-    type: "llm-context-limit",
-    message: "Request exceeds AI model context limit. Try analyzing fewer issues at once.",
-    timestamp: new Date().toISOString(),
-  }),
-
-  llmUnknownError: (error?: string): LLMError => ({
-    type: "llm-unknown-error",
-    message: "An unexpected error occurred with the AI model.",
-    error,
-    timestamp: new Date().toISOString(),
   }),
 };
 
@@ -330,6 +278,7 @@ export type ModifiedFileMessageValue = {
   messageToken?: string;
   quickResponses?: QuickResponse[];
   userInteraction?: KaiUserInteraction;
+  readOnly?: boolean; // If true, don't show Apply/Reject buttons (just context)
 };
 export interface KaiUserInteraction {
   type: "yesNo" | "choice" | "tasks" | "modifiedFile";
