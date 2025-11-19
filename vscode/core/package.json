@@ -357,6 +357,21 @@
           "scope": "window",
           "order": 26
         },
+        "konveyor.genai.httpProtocol": {
+          "type": "string",
+          "enum": [
+            "http1",
+            "http2"
+          ],
+          "default": "http1",
+          "enumDescriptions": [
+            "HTTP/1.1 - Compatible with corporate firewalls (recommended)",
+            "HTTP/2 - Better performance if your network supports it"
+          ],
+          "description": "HTTP protocol version for AI model provider connections",
+          "scope": "window",
+          "order": 27
+        },
         "konveyor.solutionServer": {
           "type": "object",
           "description": "Configuration for the MCP solution server. Set 'enabled: true' to enable, 'url' for server endpoint, and configure 'auth' object with 'enabled: true', 'realm' (default: tackle), and 'insecure: true' to skip SSL verification if needed.",
