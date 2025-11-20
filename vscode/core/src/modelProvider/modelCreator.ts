@@ -13,7 +13,6 @@ import {
   getNodeHttpHandler,
 } from "../utilities/tls";
 import { ModelCreator, PROVIDER_ENV_CA_BUNDLE, PROVIDER_ENV_INSECURE, type FetchFn } from "./types";
-import { getHttpProtocolSetting } from "../utilities/httpProtocol";
 
 // NOTE: Missing type definitions and utility functions are assumed to be imported correctly.
 
@@ -30,14 +29,12 @@ class AzureChatOpenAICreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getHttpProtocolSetting();
-    const allowH2 = httpProtocol === "http2";
     return new AzureChatOpenAI({
       openAIApiKey: env.AZURE_OPENAI_API_KEY,
       ...args,
       configuration: {
         ...args.configuration,
-        fetch: await getFetchFn(env, this.logger, allowH2),
+        fetch: await getFetchFn(env, this.logger),
       },
     });
   }
@@ -69,8 +66,6 @@ class ChatBedrockCreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getHttpProtocolSetting();
-
     // Ensure AWS SDK doesn't make metadata calls that bypass proxy
     const enhancedEnv = {
       ...env,
@@ -104,12 +99,9 @@ class ChatBedrockCreator implements ModelCreator {
         secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
       };
     }
-    // Check if we need custom handler for proxy or HTTP/1.1
-    const needsCustomHandler = httpProtocol === "http1" || hasProxyConfiguration(enhancedEnv);
-
-    if (needsCustomHandler) {
-      const httpVersion = httpProtocol === "http1" ? "1.1" : "2.0";
-      const requestHandler = await getNodeHttpHandler(enhancedEnv, this.logger, httpVersion);
+    // Check if we need custom handler for proxy
+    if (hasProxyConfiguration(enhancedEnv)) {
+      const requestHandler = await getNodeHttpHandler(enhancedEnv, this.logger);
 
       // Create the runtime client with custom handler
       const runtimeClient = new BedrockRuntimeClient({
@@ -144,14 +136,12 @@ class ChatDeepSeekCreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getHttpProtocolSetting();
-    const allowH2 = httpProtocol === "http2";
     return new ChatDeepSeek({
       apiKey: env.DEEPSEEK_API_KEY,
       ...args,
       configuration: {
         ...args.configuration,
-        fetch: await getFetchFn(env, this.logger, allowH2),
+        fetch: await getFetchFn(env, this.logger),
       },
     });
   }
@@ -199,11 +189,9 @@ class ChatOllamaCreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getHttpProtocolSetting();
-    const allowH2 = httpProtocol === "http2";
     return new ChatOllama({
       ...args,
-      fetch: await getFetchFn(env, this.logger, allowH2),
+      fetch: await getFetchFn(env, this.logger),
     });
   }
 
@@ -223,14 +211,12 @@ class ChatOpenAICreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getHttpProtocolSetting();
-    const allowH2 = httpProtocol === "http2";
     return new ChatOpenAI({
       openAIApiKey: env.OPENAI_API_KEY,
       ...args,
       configuration: {
         ...args.configuration,
-        fetch: await getFetchFn(env, this.logger, allowH2),
+        fetch: await getFetchFn(env, this.logger),
       },
     });
   }
@@ -295,20 +281,19 @@ function getCaBundleAndInsecure(env: Record<string, string>): {
 async function getFetchFn(
   env: Record<string, string>,
   logger: Logger,
-  allowH2: boolean = true,
 ): Promise<FetchFn | undefined> {
   const { caBundle, insecure } = getCaBundleAndInsecure(env);
   const hasProxy = hasProxyConfiguration(env);
 
   // Create custom dispatcher if we need special handling
-  const needsCustomDispatcher = caBundle || insecure || !allowH2 || hasProxy;
+  const needsCustomDispatcher = caBundle || insecure || hasProxy;
 
   if (needsCustomDispatcher) {
     logger.debug(
-      `Creating custom dispatcher: caBundle=${!!caBundle}, insecure=${insecure}, allowH2=${allowH2}, hasProxy=${hasProxy}`,
+      `Creating custom dispatcher: caBundle=${!!caBundle}, insecure=${insecure}, hasProxy=${hasProxy}`,
     );
     try {
-      const dispatcher = await getDispatcherWithCertBundle(caBundle, insecure, allowH2);
+      const dispatcher = await getDispatcherWithCertBundle(caBundle, insecure);
       return getFetchWithDispatcher(dispatcher);
     } catch (error) {
       logger.error(error);

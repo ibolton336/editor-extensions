@@ -10,7 +10,6 @@ import type { Logger } from "winston";
 export async function getDispatcherWithCertBundle(
   bundlePath: string | undefined,
   insecure: boolean = false,
-  allowH2: boolean = true,
 ): Promise<UndiciTypesDispatcher> {
   // Check for proxy settings
   const proxyUrl =
@@ -36,15 +35,14 @@ export async function getDispatcherWithCertBundle(
     return new ProxyAgent({
       uri: proxyUrl,
       connect: connectOptions,
-      // ProxyAgent doesn't have direct allowH2 option
-      // It inherits HTTP version support from the underlying connection
+      // ProxyAgent supports both HTTP/1.1 and HTTP/2
     }) as unknown as UndiciTypesDispatcher;
   }
 
-  // No proxy - use standard Agent
+  // No proxy - use standard Agent with HTTP/2 support
   return new UndiciAgent({
     connect: connectOptions,
-    allowH2,
+    allowH2: true,
   }) as unknown as UndiciTypesDispatcher;
 }
 
@@ -81,7 +79,6 @@ export function getFetchWithDispatcher(
 export async function getNodeHttpHandler(
   env: Record<string, string>,
   logger: Logger,
-  httpVersion: "1.1" | "2.0" = "1.1",
 ): Promise<NodeHttpHandler> {
   const caBundle = env["CA_BUNDLE"] || env["AWS_CA_BUNDLE"];
   const insecureRaw =
@@ -117,22 +114,13 @@ export async function getNodeHttpHandler(
   const agentOptions: any = {
     ca: allCerts,
     rejectUnauthorized: !insecure,
-    // Configure HTTP version
-    ...(httpVersion === "1.1"
-      ? {
-          ALPNProtocols: ["http/1.1"],
-          // Additional options to force HTTP/1.1
-          maxVersion: "TLSv1.3",
-          minVersion: "TLSv1.2",
-        }
-      : {
-          ALPNProtocols: ["h2", "http/1.1"], // Allow HTTP/2 with fallback
-        }), // Force HTTP/2 only for testing
+    // Allow both HTTP/2 and HTTP/1.1
+    ALPNProtocols: ["h2", "http/1.1"],
   };
 
   // Use proxy-aware agents if proxy is configured
   if (proxyUrl) {
-    logger.info(`Using proxy ${proxyUrl} for AWS Bedrock with HTTP/${httpVersion}`);
+    logger.info(`Using proxy ${proxyUrl} for AWS Bedrock`);
     const proxyAgent = new HttpsProxyAgent(proxyUrl, agentOptions);
 
     return new NodeHttpHandler({
