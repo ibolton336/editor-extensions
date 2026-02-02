@@ -434,8 +434,8 @@ const actions: {
       vscode.window.showErrorMessage(`Failed to show diff with decorations: ${error}`);
     }
   },
-  QUICK_RESPONSE: async ({ responseId, messageToken }, state) => {
-    handleQuickResponse(messageToken, responseId, state);
+  QUICK_RESPONSE: async ({ responseId, messageToken, selectedStepIds }, state) => {
+    handleQuickResponse(messageToken, responseId, state, selectedStepIds);
   },
   FILE_RESPONSE: async ({ responseId, messageToken, path, content }, state, logger) => {
     await handleFileResponse(messageToken, responseId, path, content, state);

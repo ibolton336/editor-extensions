@@ -4,11 +4,13 @@ import {
   KaiUserInteraction,
 } from "@editor-extensions/agentic";
 import { ExtensionState } from "../../extensionState";
+import { ChatMessageType, PlanMessageValue } from "@editor-extensions/shared";
 import * as vscode from "vscode";
 export async function handleQuickResponse(
   messageToken: string,
   responseId: string,
   state: ExtensionState,
+  selectedStepIds?: string[],
 ): Promise<void> {
   try {
     try {
@@ -32,11 +34,18 @@ export async function handleQuickResponse(
       });
 
       // Create the workflow message with proper typing
-      let interactionType = responseId.startsWith("choice-") ? "choice" : "yesNo";
-      let responseData: { choice: number } | { yesNo: boolean } | { tasks: any; yesNo: boolean } =
-        responseId.startsWith("choice-")
-          ? { choice: parseInt(responseId.split("-")[1]) }
-          : { yesNo: responseId === "yes" };
+      let interactionType: KaiUserInteraction["type"] = responseId.startsWith("choice-")
+        ? "choice"
+        : "yesNo";
+      let responseData:
+        | { choice: number }
+        | { yesNo: boolean }
+        | { tasks: any; yesNo: boolean }
+        | { plan: { approved: boolean; selectedStepIds: string[] } } = responseId.startsWith(
+        "choice-",
+      )
+        ? { choice: parseInt(responseId.split("-")[1]) }
+        : { yesNo: responseId === "yes" };
 
       // Check if this message is related to "tasks" interaction by looking for tasksData in the message value
       if (msg.value && "tasksData" in msg.value) {
@@ -44,6 +53,28 @@ export async function handleQuickResponse(
         responseData = {
           tasks: msg.value.tasksData,
           yesNo: responseId === "yes",
+        };
+      }
+
+      // Check if this is a Plan message
+      if (msg.kind === ChatMessageType.Plan) {
+        interactionType = "plan";
+        const planData = msg.value as unknown as PlanMessageValue;
+        const isApproved = responseId === "approve-all" || responseId === "approve-selected";
+
+        // For approve-all, select all step IDs; for approve-selected, use provided IDs
+        let stepsToApprove: string[] = [];
+        if (responseId === "approve-all" && planData.steps) {
+          stepsToApprove = planData.steps.map((step) => step.id);
+        } else if (responseId === "approve-selected" && selectedStepIds) {
+          stepsToApprove = selectedStepIds;
+        }
+
+        responseData = {
+          plan: {
+            approved: isApproved,
+            selectedStepIds: stepsToApprove,
+          },
         };
       }
 

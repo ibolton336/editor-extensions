@@ -8,6 +8,7 @@ import {
   Incident,
   type ToolMessageValue,
   type ModifiedFileMessageValue,
+  type PlanMessageValue,
 } from "@editor-extensions/shared";
 import { openFile } from "../../hooks/actions";
 import { IncidentTableGroup } from "../IncidentTable/IncidentTableGroup";
@@ -15,6 +16,7 @@ import { SentMessage } from "./SentMessage";
 import { ReceivedMessage } from "./ReceivedMessage";
 import { ToolMessage } from "./ToolMessage";
 import { ModifiedFileMessage } from "./ModifiedFile";
+import { PlanMessage } from "./Plan";
 import { useExtensionStore } from "../../store/store";
 import { sendVscodeMessage as dispatch } from "../../utils/vscodeMessaging";
 import {
@@ -196,6 +198,20 @@ const ResolutionPage: React.FC = () => {
                     }))
                   : undefined
               }
+            />
+          </MessageWrapper>
+        );
+      }
+
+      if (msg.kind === ChatMessageType.Plan) {
+        const planData = msg.value as unknown as PlanMessageValue;
+        return (
+          <MessageWrapper key={msg.messageToken}>
+            <PlanMessage
+              data={planData}
+              messageToken={msg.messageToken}
+              timestamp={msg.timestamp}
+              isDisabled={!!msg.selectedResponse}
             />
           </MessageWrapper>
         );

@@ -24,6 +24,7 @@ export enum KaiWorkflowMessageType {
   ToolCall,
   UserInteraction,
   Error,
+  Plan,
 }
 
 export interface KaiModifiedFile {
@@ -40,7 +41,7 @@ export interface KaiToolCall {
 }
 
 export interface KaiUserInteraction {
-  type: "yesNo" | "choice" | "tasks" | "modifiedFile";
+  type: "yesNo" | "choice" | "tasks" | "modifiedFile" | "plan";
   systemMessage: {
     yesNo?: string;
     choice?: string[];
@@ -52,7 +53,31 @@ export interface KaiUserInteraction {
       uri: string;
       task: string;
     }[];
+    plan?: {
+      approved: boolean;
+      selectedStepIds: string[];
+    };
   };
+}
+
+// Plan Mode Types - Re-exported from schemas
+export type {
+  PlanStep,
+  PlanStepCategory,
+  PlanStepEffort,
+  PlanStatus,
+  ResearchFinding,
+} from "./schemas/planMode";
+
+import type { PlanStep, PlanStatus, ResearchFinding } from "./schemas/planMode";
+
+export interface KaiPlanData {
+  planId: string;
+  title: string;
+  summary: string;
+  steps: PlanStep[];
+  status: PlanStatus;
+  researchFindings?: ResearchFinding[];
 }
 
 export type KaiWorkflowMessage =
@@ -61,7 +86,8 @@ export type KaiWorkflowMessage =
   | BaseWorkflowMessage<KaiWorkflowMessageType.ModifiedFile, KaiModifiedFile>
   | BaseWorkflowMessage<KaiWorkflowMessageType.UserInteraction, KaiUserInteraction>
   | BaseWorkflowMessage<KaiWorkflowMessageType.ToolCall, KaiToolCall>
-  | BaseWorkflowMessage<KaiWorkflowMessageType.Error, string>;
+  | BaseWorkflowMessage<KaiWorkflowMessageType.Error, string>
+  | BaseWorkflowMessage<KaiWorkflowMessageType.Plan, KaiPlanData>;
 
 export type KaiUserInteractionMessage = BaseWorkflowMessage<
   KaiWorkflowMessageType.UserInteraction,

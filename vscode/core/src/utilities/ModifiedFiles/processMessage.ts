@@ -6,10 +6,16 @@ import {
   KaiInteractiveWorkflow,
   KaiWorkflowMessageType,
   KaiUserInteraction,
+  KaiPlanData,
 } from "@editor-extensions/agentic";
 import { flattenCurrentTasks, summarizeTasks, type TasksList } from "../../taskManager";
 import { ExtensionState } from "../../extensionState";
-import { ChatMessageType, ToolMessageValue, createLLMError } from "@editor-extensions/shared";
+import {
+  ChatMessageType,
+  ToolMessageValue,
+  createLLMError,
+  PlanMessageValue,
+} from "@editor-extensions/shared";
 import { handleModifiedFileMessage } from "./handleModifiedFile";
 import { MessageQueueManager, handleUserInteractionComplete } from "./queueManager";
 
@@ -285,6 +291,12 @@ export const processMessageByType = async (
           await handleTasksInteraction(msg, state, workflow, queueManager, pendingInteractions);
           break;
         }
+        case "plan": {
+          // Plan approval is handled via the Plan message type
+          // This is just for tracking the interaction state
+          state.logger.debug("Plan interaction received - waiting for Plan message handling");
+          break;
+        }
         default: {
           console.warn(`Unknown user interaction type: ${interaction.type}, auto-rejecting`);
           (msg.data as KaiUserInteraction).response = { yesNo: false };
@@ -360,6 +372,44 @@ export const processMessageByType = async (
         state,
         state.modifiedFilesEventEmitter,
       );
+      break;
+    }
+    case KaiWorkflowMessageType.Plan: {
+      // Handle plan messages - display plan for user approval
+      const planData = msg.data as KaiPlanData;
+      state.logger.info("Plan message received", {
+        planId: planData.planId,
+        stepCount: planData.steps?.length ?? 0,
+      });
+
+      // Create the plan message value for the UI
+      const planMessageValue: PlanMessageValue = {
+        planId: planData.planId,
+        title: planData.title,
+        summary: planData.summary,
+        steps: planData.steps,
+        status: planData.status,
+        researchFindings: planData.researchFindings,
+      };
+
+      // Add plan to chat messages
+      state.mutateChatMessages((draft) => {
+        draft.chatMessages.push({
+          kind: ChatMessageType.Plan,
+          messageToken: msg.id,
+          timestamp: new Date().toISOString(),
+          value: planMessageValue as unknown as Record<string, unknown>,
+          quickResponses: [
+            { id: "approve-all", content: "Approve All" },
+            { id: "approve-selected", content: "Approve Selected" },
+            { id: "reject", content: "Reject Plan" },
+          ],
+        });
+      });
+
+      // Handle user interaction promise for plan approval
+      await handleUserInteractionPromise(msg, state, queueManager, pendingInteractions);
+      state.logger.debug("Plan interaction promise completed", { messageId: msg.id });
       break;
     }
     case KaiWorkflowMessageType.Error: {

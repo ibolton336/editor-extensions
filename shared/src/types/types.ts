@@ -99,6 +99,7 @@ export enum ChatMessageType {
   Tool = "ToolChatMessage",
   ModifiedFile = "ModifiedFileChatMessage",
   BatchReview = "BatchReviewChatMessage",
+  Plan = "PlanChatMessage",
 }
 
 export interface QuickResponse {
@@ -383,7 +384,7 @@ export type ModifiedFileMessageValue = {
   readOnly?: boolean; // If true, don't show Apply/Reject buttons (just context)
 };
 export interface KaiUserInteraction {
-  type: "yesNo" | "choice" | "tasks" | "modifiedFile";
+  type: "yesNo" | "choice" | "tasks" | "modifiedFile" | "plan";
   systemMessage: {
     yesNo?: string;
     choice?: string[];
@@ -395,7 +396,46 @@ export interface KaiUserInteraction {
       uri: string;
       task: string;
     }[];
+    plan?: {
+      approved: boolean;
+      selectedStepIds: string[];
+    };
   };
+}
+
+// Plan Mode Types
+export type PlanStepCategory = "refactor" | "dependency" | "config" | "test" | "other";
+export type PlanStepEffort = "low" | "medium" | "high";
+export type PlanStatus = "pending" | "approved" | "rejected" | "executing" | "completed";
+
+export interface PlanStep {
+  id: string;
+  title: string;
+  description: string;
+  file?: string;
+  estimatedEffort: PlanStepEffort;
+  category: PlanStepCategory;
+  selected: boolean;
+  status?: "pending" | "in_progress" | "completed" | "skipped";
+  validationWarnings?: string[];
+}
+
+export interface ResearchFinding {
+  id: string;
+  type: "tech_debt" | "migration_pattern" | "dependency_issue" | "config_issue" | "other";
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high";
+  affectedFiles: string[];
+}
+
+export interface PlanMessageValue {
+  planId: string;
+  title: string;
+  summary: string;
+  steps: PlanStep[];
+  status: PlanStatus;
+  researchFindings?: ResearchFinding[];
 }
 
 export interface ModifiedFileState {

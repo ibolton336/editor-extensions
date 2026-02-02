@@ -1,0 +1,353 @@
+.plan-message {
+  border: 1px solid var(--pf-global--BorderColor--dark-100);
+  border-radius: 8px;
+  background: var(--vscode-editor-background);
+  margin: 8px 0;
+  overflow: hidden;
+}
+
+.plan-header {
+  padding: 16px;
+  background: linear-gradient(
+    135deg,
+    var(--pf-global--BackgroundColor--dark-150) 0%,
+    var(--pf-global--BackgroundColor--dark-100) 100%
+  );
+  border-bottom: 1px solid var(--pf-global--BorderColor--dark-100);
+}
+
+.plan-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--pf-global--Color--dark-100);
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-title-icon {
+  color: var(--pf-global--info-color--100);
+}
+
+.plan-summary {
+  color: var(--pf-global--Color--dark-200);
+  font-size: 0.875rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.plan-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.plan-status-badge--pending {
+  background: var(--pf-global--warning-color--100);
+  color: #000;
+}
+
+.plan-status-badge--approved {
+  background: var(--pf-global--success-color--100);
+  color: #fff;
+}
+
+.plan-status-badge--rejected {
+  background: var(--pf-global--danger-color--100);
+  color: #fff;
+}
+
+.plan-status-badge--executing {
+  background: var(--pf-global--info-color--100);
+  color: #fff;
+}
+
+.plan-status-badge--completed {
+  background: var(--pf-global--success-color--100);
+  color: #fff;
+}
+
+.plan-steps-container {
+  padding: 16px;
+}
+
+.plan-steps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.plan-steps-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--pf-global--Color--dark-100);
+  margin: 0;
+}
+
+.plan-steps-count {
+  font-size: 0.75rem;
+  color: var(--pf-global--Color--dark-200);
+}
+
+.plan-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--pf-global--BorderColor--dark-100);
+  border-radius: 6px;
+  background: var(--pf-global--BackgroundColor--dark-200);
+  transition: border-color 0.2s ease;
+}
+
+.plan-step:hover {
+  border-color: var(--pf-global--BorderColor--dark-200);
+}
+
+.plan-step--selected {
+  border-color: var(--pf-global--info-color--100);
+  background: rgba(115, 188, 247, 0.05);
+}
+
+.plan-step-checkbox {
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.plan-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.plan-step-title {
+  font-weight: 500;
+  color: var(--pf-global--Color--dark-100);
+  font-size: 0.875rem;
+}
+
+.plan-step-description {
+  color: var(--pf-global--Color--dark-200);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.plan-step-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: var(--pf-global--BackgroundColor--dark-100);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--pf-global--Color--dark-200);
+  font-family: monospace;
+}
+
+.plan-step-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.plan-step-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.plan-step-badge--category {
+  background: var(--pf-global--BackgroundColor--dark-100);
+  color: var(--pf-global--Color--dark-200);
+}
+
+.plan-step-badge--effort-low {
+  background: rgba(63, 156, 53, 0.2);
+  color: #6ec071;
+}
+
+.plan-step-badge--effort-medium {
+  background: rgba(240, 171, 0, 0.2);
+  color: #f0ab00;
+}
+
+.plan-step-badge--effort-high {
+  background: rgba(201, 25, 11, 0.2);
+  color: #f48771;
+}
+
+.plan-step-warnings {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(240, 171, 0, 0.1);
+  border-radius: 4px;
+  border-left: 3px solid var(--pf-global--warning-color--100);
+}
+
+.plan-step-warning {
+  font-size: 0.75rem;
+  color: var(--pf-global--warning-color--100);
+  margin: 0;
+}
+
+.plan-step-warning + .plan-step-warning {
+  margin-top: 4px;
+}
+
+.plan-research-section {
+  padding: 16px;
+  border-top: 1px solid var(--pf-global--BorderColor--dark-100);
+}
+
+.plan-research-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: var(--pf-global--Color--dark-200);
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.plan-research-toggle:hover {
+  color: var(--pf-global--Color--dark-100);
+}
+
+.plan-research-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-research-item {
+  padding: 10px;
+  background: var(--pf-global--BackgroundColor--dark-200);
+  border-radius: 4px;
+  border-left: 3px solid var(--pf-global--info-color--100);
+}
+
+.plan-research-item--tech_debt {
+  border-left-color: var(--pf-global--warning-color--100);
+}
+
+.plan-research-item--migration_pattern {
+  border-left-color: var(--pf-global--info-color--100);
+}
+
+.plan-research-item--dependency_issue {
+  border-left-color: var(--pf-global--danger-color--100);
+}
+
+.plan-research-item--config_issue {
+  border-left-color: #b98412;
+}
+
+.plan-research-title {
+  font-weight: 500;
+  color: var(--pf-global--Color--dark-100);
+  font-size: 0.8125rem;
+  margin: 0 0 4px 0;
+}
+
+.plan-research-description {
+  color: var(--pf-global--Color--dark-200);
+  font-size: 0.75rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.plan-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid var(--pf-global--BorderColor--dark-100);
+  background: var(--pf-global--BackgroundColor--dark-150);
+}
+
+.plan-action-btn {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.plan-action-btn--primary {
+  background: var(--pf-global--info-color--100);
+  color: #fff;
+}
+
+.plan-action-btn--primary:hover:not(:disabled) {
+  background: #5fa8d3;
+}
+
+.plan-action-btn--secondary {
+  background: var(--pf-global--BackgroundColor--dark-100);
+  color: var(--pf-global--Color--dark-100);
+  border: 1px solid var(--pf-global--BorderColor--dark-100);
+}
+
+.plan-action-btn--secondary:hover:not(:disabled) {
+  background: var(--pf-global--BackgroundColor--dark-200);
+}
+
+.plan-action-btn--danger {
+  background: transparent;
+  color: var(--pf-global--danger-color--100);
+  border: 1px solid var(--pf-global--danger-color--100);
+}
+
+.plan-action-btn--danger:hover:not(:disabled) {
+  background: rgba(201, 25, 11, 0.1);
+}
+
+.plan-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.plan-select-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--pf-global--BorderColor--dark-100);
+}
+
+.plan-select-all-label {
+  font-size: 0.8125rem;
+  color: var(--pf-global--Color--dark-200);
+  cursor: pointer;
+}

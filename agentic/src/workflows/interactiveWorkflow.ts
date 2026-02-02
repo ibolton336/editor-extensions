@@ -29,11 +29,19 @@ import { AnalysisIssueFix } from "../nodes/analysisIssueFix";
 import { JavaDependencyTools } from "../tools/javaDependency";
 import { DiagnosticsIssueFix } from "../nodes/diagnosticsIssueFix";
 import { AgentName, DiagnosticsOrchestratorState } from "../schemas/diagnosticsIssueFix";
+import { PlanModeNodes } from "../nodes/planMode";
+import { PlanModeOrchestratorState, PlanModeOutputState } from "../schemas/planMode";
+import {
+  FilePlanStateStore,
+  type PlanStateStore,
+  type PersistedPlanState,
+} from "../persistence/planStateStore";
 
 export interface KaiInteractiveWorkflowInput extends KaiWorkflowInput {
   programmingLanguage: string;
   migrationHint: string;
   enableAgentMode: boolean;
+  enablePlanMode?: boolean;
 }
 
 // output state of the initial analysis workflow
@@ -77,7 +85,11 @@ export class KaiInteractiveWorkflow
   private followUpInteractiveWorkflow:
     | CompiledStateGraph<any, any, string, any, any, any>
     | undefined;
+  // workflow for plan mode - research, plan, validate, approve flow
+  private planModeWorkflow: CompiledStateGraph<any, any, any, any, any> | undefined;
   private diagnosticsNodes: DiagnosticsIssueFix | undefined;
+  private planModeNodes: PlanModeNodes | undefined;
+  private planStateStore: PlanStateStore;
 
   private userInteractionPromises: Map<string, PendingUserInteraction>;
   private readonly logger: Logger;
@@ -87,18 +99,22 @@ export class KaiInteractiveWorkflow
   constructor(logger: Logger) {
     super();
     this.diagnosticsNodes = undefined;
+    this.planModeNodes = undefined;
     this.analysisFixWorkflow = undefined;
     this.followUpInteractiveWorkflow = undefined;
+    this.planModeWorkflow = undefined;
     this.userInteractionPromises = new Map<string, PendingUserInteraction>();
     this.logger = logger.child({
       component: "KaiInteractiveWorkflow",
     });
     this.workspaceDir = "";
     this.fsTools = undefined;
+    this.planStateStore = new FilePlanStateStore(this.logger);
 
     this.runToolsEdgeFunction = this.runToolsEdgeFunction.bind(this);
     this.analysisIssueFixRouterEdge = this.analysisIssueFixRouterEdge.bind(this);
     this.diagnosticsOrchestratorEdge = this.diagnosticsOrchestratorEdge.bind(this);
+    this.planModeEdge = this.planModeEdge.bind(this);
   }
 
   async init(options: KaiWorkflowInitOptions): Promise<void> {
@@ -143,6 +159,41 @@ export class KaiInteractiveWorkflow
     this.diagnosticsNodes.on("workflowMessage", async (msg: KaiWorkflowMessage) => {
       this.emitWorkflowMessage(msg);
     });
+
+    // Initialize Plan Mode nodes
+    this.planModeNodes = new PlanModeNodes(
+      options.modelProvider,
+      this.fsTools.all(),
+      this.workspaceDir,
+      this.logger.child({
+        component: "PlanModeNode",
+      }),
+    );
+    this.planModeNodes.on("workflowMessage", async (msg: KaiWorkflowMessage) => {
+      this.emitWorkflowMessage(msg);
+    });
+
+    // Build Plan Mode workflow
+    this.planModeWorkflow = new StateGraph({
+      input: PlanModeOrchestratorState,
+      output: PlanModeOutputState,
+      stateSchema: PlanModeOrchestratorState,
+    })
+      // Research node - analyzes codebase and incidents
+      .addNode("research", this.planModeNodes.research)
+      // Plan generation node - creates execution plan
+      .addNode("generate_plan", this.planModeNodes.generatePlan)
+      // Validation node - validates plan against rules
+      .addNode("validate_plan", this.planModeNodes.validatePlan)
+      // Approval gate - waits for user approval
+      .addNode("approval_gate", this.planModeNodes.approvalGate)
+      // Flow: research -> generate_plan -> validate_plan -> approval_gate
+      .addEdge(START, "research")
+      .addEdge("research", "generate_plan")
+      .addEdge("generate_plan", "validate_plan")
+      .addEdge("validate_plan", "approval_gate")
+      .addConditionalEdges("approval_gate", this.planModeEdge, [END])
+      .compile();
 
     this.analysisFixWorkflow = new StateGraph({
       input: AnalysisIssueFixOrchestratorState,
@@ -220,6 +271,38 @@ export class KaiInteractiveWorkflow
   async run(input: KaiInteractiveWorkflowInput): Promise<KaiWorkflowResponse> {
     if (!this.analysisFixWorkflow || !(this.analysisFixWorkflow instanceof CompiledStateGraph)) {
       throw new Error(`Workflow must be inited before it can be run`);
+    }
+
+    // If Plan Mode is enabled, run the plan workflow first
+    if (input.enablePlanMode && this.planModeWorkflow) {
+      const planOutput = await this.runPlanMode(input);
+
+      // If plan was rejected or no steps were approved, return early
+      if (!planOutput.planApproved || planOutput.approvedSteps.length === 0) {
+        this.logger.info("Plan mode: Plan was rejected or no steps approved, ending workflow");
+        this.emitWorkflowMessage({
+          id: "plan_mode_ended",
+          type: KaiWorkflowMessageType.LLMResponseChunk,
+          data: new AIMessageChunk("Plan was not approved. Workflow ended."),
+        });
+        return {
+          errors: [],
+          modified_files: [],
+        };
+      }
+
+      this.logger.info("Plan mode: Plan approved, continuing with execution", {
+        approvedSteps: planOutput.approvedSteps.length,
+      });
+
+      // Emit message about proceeding with execution
+      this.emitWorkflowMessage({
+        id: "plan_mode_approved",
+        type: KaiWorkflowMessageType.LLMResponseChunk,
+        data: new AIMessageChunk(
+          `Plan approved with ${planOutput.approvedSteps.length} steps. Proceeding with execution...`,
+        ),
+      });
     }
 
     const incidentsByUris: Array<{ uri: string; incidents: EnhancedIncident[] }> =
@@ -382,6 +465,11 @@ export class KaiInteractiveWorkflow
       this.fsTools?.resolveModifiedFilePromise(response);
       return;
     }
+    // Handle plan approval responses
+    if (response.type === KaiWorkflowMessageType.UserInteraction && response.data.type === "plan") {
+      await this.planModeNodes?.resolvePlanApproval(response);
+      return;
+    }
     const promise = this.userInteractionPromises.get(response.id);
     if (!promise) {
       return;
@@ -391,6 +479,97 @@ export class KaiInteractiveWorkflow
       promise.reject(Error(`Invalid response from user`));
     }
     promise.resolve(response);
+  }
+
+  /**
+   * Run the Plan Mode workflow - research, plan, validate, and get user approval
+   */
+  private async runPlanMode(
+    input: KaiInteractiveWorkflowInput,
+  ): Promise<typeof PlanModeOutputState.State> {
+    if (!this.planModeWorkflow) {
+      throw new Error("Plan mode workflow not initialized");
+    }
+
+    this.logger.info("Starting Plan Mode workflow", {
+      incidentCount: input.incidents?.length ?? 0,
+    });
+
+    const planModeInput: typeof PlanModeOrchestratorState.State = {
+      inputIncidents: input.incidents ?? [],
+      workspaceDir: this.workspaceDir,
+      migrationHint: input.migrationHint,
+      programmingLanguage: input.programmingLanguage,
+      cacheSubDir: "",
+      iterationCount: 0,
+      // Default values for other fields
+      researchFindings: [],
+      researchSummary: undefined,
+      generatedPlan: [],
+      planId: "",
+      planTitle: "",
+      planSummary: "",
+      validatedPlan: [],
+      validationPassed: false,
+      validationMessages: [],
+      approvedSteps: [],
+      planApproved: false,
+      selectedStepIds: [],
+      currentStepIdx: 0,
+      completedStepIds: [],
+      isPlanMode: true,
+      planStatus: "researching",
+      shouldEnd: false,
+    };
+
+    const planOutput: typeof PlanModeOutputState.State = await this.planModeWorkflow.invoke(
+      planModeInput,
+      {
+        recursionLimit: 20, // Plan mode is simpler, doesn't need many iterations
+      },
+    );
+
+    // Persist plan state for resumability
+    if (planOutput.planApproved && planOutput.approvedSteps.length > 0) {
+      const persistedState: PersistedPlanState = {
+        planId: planOutput.planId,
+        planTitle: planOutput.planTitle,
+        planSummary: planOutput.planSummary,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        researchFindings: planOutput.researchFindings,
+        allSteps: planOutput.approvedSteps,
+        approvedSteps: planOutput.approvedSteps,
+        selectedStepIds: planOutput.approvedSteps.map((s) => s.id),
+        status: "approved",
+        currentStepIdx: 0,
+        completedStepIds: [],
+        failedStepIds: [],
+        migrationHint: input.migrationHint,
+        programmingLanguage: input.programmingLanguage,
+        incidentCount: input.incidents?.length ?? 0,
+      };
+
+      await this.planStateStore.savePlanState(this.workspaceDir, persistedState);
+      this.logger.info("Plan state persisted for resumability", {
+        planId: planOutput.planId,
+      });
+    }
+
+    return planOutput;
+  }
+
+  /**
+   * Edge function for plan mode - determines next step after approval gate
+   */
+  private async planModeEdge(state: typeof PlanModeOrchestratorState.State): Promise<string> {
+    this.logger.debug("planModeEdge called", {
+      planApproved: state.planApproved,
+      approvedStepCount: state.approvedSteps?.length ?? 0,
+    });
+
+    // After approval gate, always end - the main workflow will use the output
+    return END;
   }
 
   // edge responsible for invoking analysis issue fix node until all issues

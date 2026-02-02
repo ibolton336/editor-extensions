@@ -264,6 +264,7 @@ export class SolutionWorkflowOrchestrator {
       migrationHint: profileName,
       programmingLanguage,
       enableAgentMode: this.agentMode,
+      enablePlanMode: this.planMode,
     };
 
     await this.workflow.run(input);
