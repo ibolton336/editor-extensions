@@ -138,9 +138,9 @@ export const ProfileEditorForm: React.FC<{
     setLocalProfile(updated);
   };
 
-  const handleBlur = () => {
-    const trimmedName = localProfile.name.trim();
-
+  // Validates profile name and updates validation state
+  const validateName = (profileToCheck: AnalysisProfile): boolean => {
+    const trimmedName = profileToCheck.name.trim();
     const isDuplicate =
       trimmedName !== profile.name && allProfiles.some((p) => p.name === trimmedName);
     const isEmpty = trimmedName === "";
@@ -148,18 +148,33 @@ export const ProfileEditorForm: React.FC<{
     if (isEmpty) {
       setNameValidation("error");
       setNameErrorMsg("Profile name is required.");
-      return;
+      return false;
     }
 
     if (isDuplicate) {
       setNameValidation("error");
       setNameErrorMsg("A profile with this name already exists.");
-      return;
+      return false;
     }
 
     setNameValidation("default");
     setNameErrorMsg(null);
-    debouncedChange({ ...localProfile, name: trimmedName });
+    return true;
+  };
+
+  // Checks name validity without updating state (for canSaveProfile)
+  const isNameValid = (profileToCheck: AnalysisProfile): boolean => {
+    const trimmedName = profileToCheck.name.trim();
+    const isDuplicate =
+      trimmedName !== profile.name && allProfiles.some((p) => p.name === trimmedName);
+    const isEmpty = trimmedName === "";
+    return !isEmpty && !isDuplicate;
+  };
+
+  const handleBlur = () => {
+    if (validateName(localProfile)) {
+      debouncedChange({ ...localProfile, name: localProfile.name.trim() });
+    }
   };
 
   const validateTargets = (targets: string[]) => {
@@ -189,18 +204,20 @@ export const ProfileEditorForm: React.FC<{
 
   // Helper to check if a profile can be saved (all validation passes)
   const canSaveProfile = (profileToCheck: AnalysisProfile, targets: string[]): boolean => {
+    const hasValidName = isNameValid(profileToCheck);
     const hasTargets = targets.length > 0;
     const hasRules =
       profileToCheck.useDefaultRules || (profileToCheck.customRules?.length ?? 0) > 0;
-    return hasTargets && hasRules;
+    return hasValidName && hasTargets && hasRules;
   };
 
   // Validates and optionally saves if valid
   const validateAndSave = (updatedProfile: AnalysisProfile, targets: string[]) => {
+    const isProfileNameValid = isNameValid(updatedProfile);
     const isTargetsValid = validateTargets(targets);
     const isRulesValid = validateRules(updatedProfile);
 
-    if (isTargetsValid && isRulesValid) {
+    if (isProfileNameValid && isTargetsValid && isRulesValid) {
       debouncedChange(updatedProfile);
     }
   };
@@ -283,7 +300,9 @@ export const ProfileEditorForm: React.FC<{
           <Flex alignItems={{ default: "alignItemsCenter" }}>
             <FlexItem>
               <Icon>
-                {targetsValidation === "error" || rulesValidation === "error" ? (
+                {nameValidation === "error" ||
+                targetsValidation === "error" ||
+                rulesValidation === "error" ? (
                   <ExclamationTriangleIcon color="var(--pf-v5-global--warning-color--100)" />
                 ) : (
                   <CheckCircleIcon color="var(--pf-v5-global--success-color--100)" />
@@ -292,7 +311,9 @@ export const ProfileEditorForm: React.FC<{
             </FlexItem>
             <FlexItem>
               <span style={{ fontSize: "0.875rem", color: "var(--pf-v5-global--Color--200)" }}>
-                {targetsValidation === "error" || rulesValidation === "error"
+                {nameValidation === "error" ||
+                targetsValidation === "error" ||
+                rulesValidation === "error"
                   ? "Fix errors to save"
                   : isSaving
                     ? "Saving..."
