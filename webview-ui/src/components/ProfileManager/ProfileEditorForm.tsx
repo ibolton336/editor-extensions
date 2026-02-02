@@ -23,6 +23,7 @@ import {
 } from "@patternfly/react-core";
 import {
   ExclamationCircleIcon,
+  ExclamationTriangleIcon,
   CheckCircleIcon,
   StarIcon,
   InfoCircleIcon,
@@ -186,15 +187,46 @@ export const ProfileEditorForm: React.FC<{
     return true;
   };
 
+  // Helper to check if a profile can be saved (all validation passes)
+  const canSaveProfile = (profileToCheck: AnalysisProfile, targets: string[]): boolean => {
+    const hasTargets = targets.length > 0;
+    const hasRules =
+      profileToCheck.useDefaultRules || (profileToCheck.customRules?.length ?? 0) > 0;
+    return hasTargets && hasRules;
+  };
+
+  // Validates and optionally saves if valid
+  const validateAndSave = (updatedProfile: AnalysisProfile, targets: string[]) => {
+    const isTargetsValid = validateTargets(targets);
+    const isRulesValid = validateRules(updatedProfile);
+
+    if (isTargetsValid && isRulesValid) {
+      debouncedChange(updatedProfile);
+    }
+  };
+
   const updateLabelSelector = (sources: string[], targets: string[]) => {
     const selector = buildLabelSelector(sources, targets);
     const updatedProfile = { ...localProfile, labelSelector: selector };
     setLocalProfile(updatedProfile);
+    validateAndSave(updatedProfile, targets);
+  };
 
-    // Validate targets
-    validateTargets(targets);
+  const handleDefaultRulesChange = (_e: React.FormEvent, checked: boolean) => {
+    const updated = { ...localProfile, useDefaultRules: checked };
+    setLocalProfile(updated);
+    if (canSaveProfile(updated, selectedTargets)) {
+      debouncedChange(updated);
+    }
+  };
 
-    debouncedChange(updatedProfile);
+  const handleRemoveCustomRule = (index: number) => {
+    const updatedRules = localProfile.customRules.filter((_, i) => i !== index);
+    const newProfile = { ...localProfile, customRules: updatedRules };
+    setLocalProfile(newProfile);
+    if (canSaveProfile(newProfile, selectedTargets)) {
+      debouncedChange(newProfile);
+    }
   };
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -251,12 +283,20 @@ export const ProfileEditorForm: React.FC<{
           <Flex alignItems={{ default: "alignItemsCenter" }}>
             <FlexItem>
               <Icon>
-                <CheckCircleIcon color="var(--pf-v5-global--success-color--100)" />
+                {targetsValidation === "error" || rulesValidation === "error" ? (
+                  <ExclamationTriangleIcon color="var(--pf-v5-global--warning-color--100)" />
+                ) : (
+                  <CheckCircleIcon color="var(--pf-v5-global--success-color--100)" />
+                )}
               </Icon>
             </FlexItem>
             <FlexItem>
               <span style={{ fontSize: "0.875rem", color: "var(--pf-v5-global--Color--200)" }}>
-                {isSaving ? "Saving..." : "Changes saved automatically"}
+                {targetsValidation === "error" || rulesValidation === "error"
+                  ? "Fix errors to save"
+                  : isSaving
+                    ? "Saving..."
+                    : "Changes saved automatically"}
               </span>
             </FlexItem>
           </Flex>
@@ -360,11 +400,7 @@ export const ProfileEditorForm: React.FC<{
           id="use-default-rules"
           isChecked={localProfile.useDefaultRules}
           isDisabled={profile.readOnly || isDisabled}
-          onChange={(_e, checked) => {
-            const updated = { ...localProfile, useDefaultRules: checked };
-            setLocalProfile(updated);
-            debouncedChange(updated);
-          }}
+          onChange={handleDefaultRulesChange}
         />
         {rulesErrorMsg ? (
           <FormHelperText>
@@ -484,16 +520,7 @@ export const ProfileEditorForm: React.FC<{
                     </Tooltip>
                   }
                   closeBtnAriaLabel="Remove rule"
-                  onClose={
-                    isDisabled
-                      ? undefined
-                      : () => {
-                          const updated = localProfile.customRules.filter((_, i) => i !== index);
-                          const newProfile = { ...localProfile, customRules: updated };
-                          setLocalProfile(newProfile);
-                          debouncedChange(newProfile);
-                        }
-                  }
+                  onClose={isDisabled ? undefined : () => handleRemoveCustomRule(index)}
                 >
                   {truncateMiddle(path.split("/").pop() || path, 30)}
                 </Label>

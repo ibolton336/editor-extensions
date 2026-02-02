@@ -1,4 +1,8 @@
-import { buildLabelSelector, buildLabelSelectorFromLabels } from "../labelSelector";
+import {
+  buildLabelSelector,
+  buildLabelSelectorFromLabels,
+  hasTargetInLabelSelector,
+} from "../labelSelector";
 import { expect } from "expect";
 
 describe("buildLabelSelector", () => {
@@ -181,5 +185,51 @@ describe("buildLabelSelectorFromLabels", () => {
     expect(result).toBe(
       "(konveyor.io/source=java-ee || konveyor.io/source=java-ee) && !konveyor.io/target=eap7 && !konveyor.io/target=eap7",
     );
+  });
+});
+
+describe("hasTargetInLabelSelector", () => {
+  it("should return false for undefined", () => {
+    expect(hasTargetInLabelSelector(undefined)).toBe(false);
+  });
+
+  it("should return false for empty string", () => {
+    expect(hasTargetInLabelSelector("")).toBe(false);
+  });
+
+  it("should return false for whitespace-only string", () => {
+    expect(hasTargetInLabelSelector("   ")).toBe(false);
+  });
+
+  it("should return false for selector with only sources", () => {
+    expect(hasTargetInLabelSelector("(konveyor.io/source=java-ee) || (discovery)")).toBe(false);
+  });
+
+  it("should return false for discovery-only selector", () => {
+    expect(hasTargetInLabelSelector("(discovery)")).toBe(false);
+  });
+
+  it("should return true for selector with targets", () => {
+    expect(hasTargetInLabelSelector("(konveyor.io/target=spring-boot) || (discovery)")).toBe(true);
+  });
+
+  it("should return true for selector with targets and sources", () => {
+    expect(
+      hasTargetInLabelSelector(
+        "(konveyor.io/target=spring-boot) && (konveyor.io/source=java-ee) || (discovery)",
+      ),
+    ).toBe(true);
+  });
+
+  it("should return true for multiple targets", () => {
+    expect(
+      hasTargetInLabelSelector(
+        "(konveyor.io/target=spring-boot || konveyor.io/target=quarkus) || (discovery)",
+      ),
+    ).toBe(true);
+  });
+
+  it("should handle real-world label selector from EAP migration", () => {
+    expect(hasTargetInLabelSelector("(konveyor.io/target=eap7) || (discovery)")).toBe(true);
   });
 });

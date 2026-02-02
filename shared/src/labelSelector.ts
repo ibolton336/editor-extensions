@@ -1,4 +1,17 @@
 /**
+ * Checks if a label selector contains at least one target technology
+ * @param labelSelector The label selector string to check
+ * @returns true if the selector contains at least one target
+ */
+export function hasTargetInLabelSelector(labelSelector: string | undefined): boolean {
+  if (!labelSelector?.trim()) {
+    return false;
+  }
+  // Match patterns like konveyor.io/target=something
+  return /konveyor\.io\/target=\S+/.test(labelSelector);
+}
+
+/**
  * Builds a label selector string from included and excluded label arrays
  */
 export function buildLabelSelectorFromLabels(included: string[], excluded: string[] = []): string {

@@ -797,6 +797,7 @@ function updateConfigErrorsFromActiveProfile(draft: ExtensionData) {
     (error) =>
       error.type !== "no-active-profile" &&
       error.type !== "invalid-label-selector" &&
+      error.type !== "profile-no-targets" &&
       error.type !== "no-custom-rules",
   );
 

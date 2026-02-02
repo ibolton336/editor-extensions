@@ -75,7 +75,7 @@ const ConfigAlerts: React.FC<ConfigAlertsProps> = ({
                 variant="warning"
                 title={error.message}
                 actionLinks={
-                  error.type === "no-active-profile" ? (
+                  error.type === "no-active-profile" || error.type === "profile-no-targets" ? (
                     <AlertActionLink onClick={onOpenProfileManager}>
                       Manage Profiles
                     </AlertActionLink>

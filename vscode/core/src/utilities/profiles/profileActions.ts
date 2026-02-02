@@ -49,7 +49,10 @@ export async function handleConfigureCustomRules(profileId: string, state: Exten
   state.mutateConfigErrors((draft) => {
     // Clear existing profile-related errors and re-validate using centralized logic
     draft.configErrors = draft.configErrors.filter(
-      (error) => error.type !== "invalid-label-selector" && error.type !== "no-custom-rules",
+      (error) =>
+        error.type !== "invalid-label-selector" &&
+        error.type !== "profile-no-targets" &&
+        error.type !== "no-custom-rules",
     );
     updateConfigErrors(draft, "");
   });

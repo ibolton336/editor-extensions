@@ -173,6 +173,7 @@ export type ConfigErrorType =
   | "no-workspace"
   | "no-active-profile"
   | "invalid-label-selector"
+  | "profile-no-targets"
   | "provider-not-configured"
   | "provider-connection-failed"
   | "no-custom-rules"
@@ -218,6 +219,13 @@ export const createConfigError = {
   invalidLabelSelector: (): ConfigError => ({
     type: "invalid-label-selector",
     message: "Label selector is not configured.",
+  }),
+
+  profileNoTargets: (): ConfigError => ({
+    type: "profile-no-targets",
+    message: "No target technologies selected",
+    error:
+      "The active profile has no target technologies selected. Analysis requires at least one target technology to run effectively.",
   }),
 
   providerNotConfigured: (): ConfigError => ({

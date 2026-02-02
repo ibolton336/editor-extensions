@@ -135,10 +135,6 @@ const AnalysisPage: React.FC = () => {
 
   const selectedProfile = profiles.find((p) => p.id === activeProfileId);
 
-  const configInvalid =
-    !selectedProfile?.labelSelector?.trim() ||
-    (!selectedProfile.useDefaultRules && (selectedProfile.customRules?.length ?? 0) === 0);
-
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -164,7 +160,7 @@ const AnalysisPage: React.FC = () => {
                             isStarting={isStartingServer}
                             isInitializing={isInitializingServer}
                             onToggle={handleServerToggle}
-                            hasWarning={configInvalid}
+                            hasWarning={rawConfigErrors.length > 0}
                           />
                         </ToolbarItem>
                         {!isGenAIDisabled && (

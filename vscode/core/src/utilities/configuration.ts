@@ -2,7 +2,12 @@ import * as vscode from "vscode";
 import * as pathlib from "path";
 import { fileURLToPath } from "url";
 import { EXTENSION_NAME } from "./constants";
-import { AnalysisProfile, createConfigError, ExtensionData } from "@editor-extensions/shared";
+import {
+  AnalysisProfile,
+  createConfigError,
+  ExtensionData,
+  hasTargetInLabelSelector,
+} from "@editor-extensions/shared";
 
 function getConfigValue<T>(key: string): T | undefined {
   return vscode.workspace.getConfiguration(EXTENSION_NAME)?.get<T>(key);
@@ -143,6 +148,11 @@ export function updateConfigErrors(draft: ExtensionData, _settingsPath: string):
     draft.configErrors.push(createConfigError.invalidLabelSelector());
   }
 
+  // Check for no target technologies in label selector
+  if (!hasTargetInLabelSelector(profile.labelSelector)) {
+    draft.configErrors.push(createConfigError.profileNoTargets());
+  }
+
   // Check custom rules when default rules are disabled
   if (!profile.useDefaultRules && (!profile.customRules || profile.customRules.length === 0)) {
     draft.configErrors.push(createConfigError.noCustomRules());
@@ -200,12 +210,20 @@ export function updateActiveProfileValidity(draft: ExtensionData, assetRulesetPa
 
   // Remove existing profile-related errors
   draft.configErrors = draft.configErrors.filter(
-    (error) => error.type !== "invalid-label-selector" && error.type !== "no-custom-rules",
+    (error) =>
+      error.type !== "invalid-label-selector" &&
+      error.type !== "profile-no-targets" &&
+      error.type !== "no-custom-rules",
   );
 
   // Add errors if needed
   if (!active.labelSelector?.trim()) {
     draft.configErrors.push(createConfigError.invalidLabelSelector());
+  }
+
+  // Check for no target technologies
+  if (!hasTargetInLabelSelector(active.labelSelector)) {
+    draft.configErrors.push(createConfigError.profileNoTargets());
   }
 
   if (rulesets.length === 0) {
