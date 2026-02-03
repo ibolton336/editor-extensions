@@ -238,6 +238,9 @@ export const ProfileEditorForm: React.FC<{
   };
 
   const handleRemoveCustomRule = (index: number) => {
+    if (profile.readOnly || isDisabled) {
+      return;
+    }
     const updatedRules = localProfile.customRules.filter((_, i) => i !== index);
     const newProfile = { ...localProfile, customRules: updatedRules };
     setLocalProfile(newProfile);
@@ -541,7 +544,9 @@ export const ProfileEditorForm: React.FC<{
                     </Tooltip>
                   }
                   closeBtnAriaLabel="Remove rule"
-                  onClose={isDisabled ? undefined : () => handleRemoveCustomRule(index)}
+                  onClose={
+                    profile.readOnly || isDisabled ? undefined : () => handleRemoveCustomRule(index)
+                  }
                 >
                   {truncateMiddle(path.split("/").pop() || path, 30)}
                 </Label>
