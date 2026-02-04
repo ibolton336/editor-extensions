@@ -43,6 +43,28 @@
   animation: batch-review-pulse 2s ease-in-out infinite;
 }
 
+/* Loading state - workflow running but no files yet */
+.batch-review-expandable.collapsed.batch-review-loading {
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border, var(--pf-t--global--border--color--100));
+}
+
+.batch-review-loading-text {
+  color: var(--vscode-editor-foreground);
+  font-size: var(--pf-t--global--font--size--sm);
+}
+
+/* Light theme adjustments for loading state */
+.vscode-light .batch-review-expandable.collapsed.batch-review-loading {
+  background-color: var(--vscode-editor-background);
+  border-color: var(--vscode-panel-border, #d1d1d1);
+}
+
+/* High contrast theme support */
+.vscode-high-contrast .batch-review-expandable.collapsed.batch-review-loading {
+  border-width: 2px;
+}
+
 /* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .batch-review-expandable.collapsed.batch-review-highlight {
@@ -121,7 +143,21 @@
 /* Decorator status message */
 .batch-review-decorator-status {
   font-size: var(--pf-t--global--font--size--sm);
-  color: var(--pf-t--global--text--color--subtle);
+  color: var(--vscode-editor-foreground);
+  opacity: 0.8;
+  font-style: italic;
+}
+
+/* Info text - used for status messages */
+.batch-review-info-text {
+  color: var(--vscode-editor-foreground);
+  opacity: 0.8;
+  text-align: center;
+  display: block;
+  font-size: var(--pf-t--global--font--size--sm);
+}
+
+.batch-review-info-text--italic {
   font-style: italic;
 }
 
