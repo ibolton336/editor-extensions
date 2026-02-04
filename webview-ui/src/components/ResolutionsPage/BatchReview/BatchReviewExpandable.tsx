@@ -113,21 +113,17 @@ export const BatchReviewExpandable: React.FC = () => {
         <div className="batch-review-expandable collapsed batch-review-loading">
           <Flex
             alignItems={{ default: "alignItemsCenter" }}
-            justifyContent={{ default: "justifyContentSpaceBetween" }}
+            justifyContent={{ default: "justifyContentCenter" }}
             spaceItems={{ default: "spaceItemsMd" }}
             className="batch-review-collapsed-content"
           >
             <FlexItem>
-              <Flex alignItems={{ default: "alignItemsCenter" }} spaceItems={{ default: "spaceItemsSm" }}>
-                <FlexItem>
-                  <Spinner size="md" aria-label="Generating fixes" />
-                </FlexItem>
-                <FlexItem>
-                  <span className="batch-review-loading-text">
-                    Analyzing code and generating fixes...
-                  </span>
-                </FlexItem>
-              </Flex>
+              <Spinner size="md" aria-label="Generating fixes" />
+            </FlexItem>
+            <FlexItem>
+              <span className="batch-review-loading-text">
+                Analyzing code and generating fixes...
+              </span>
             </FlexItem>
             <FlexItem>
               <Button
