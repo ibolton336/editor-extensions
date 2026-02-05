@@ -534,7 +534,7 @@ const actions: {
       // Update state to reflect workflow stopped
       state.mutateSolutionWorkflow((draft) => {
         draft.isFetchingSolution = false;
-        draft.solutionState = "received";
+        draft.solutionState = "none";
         draft.isWaitingForUserInteraction = false;
         draft.isProcessingQueuedMessages = false;
       });
