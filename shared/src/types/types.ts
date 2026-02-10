@@ -1,4 +1,4 @@
-export type WebviewType = "sidebar" | "resolution" | "profiles" | "hub";
+export type WebviewType = "sidebar" | "resolution" | "profiles" | "hub" | "secondarySidebar";
 
 export interface Incident {
   uri: string;

@@ -212,6 +212,13 @@
           "title": "Konveyor",
           "icon": "resources/icon.png"
         }
+      ],
+      "secondarySideBar": [
+        {
+          "id": "konveyor-secondary",
+          "title": "Konveyor",
+          "icon": "resources/icon.png"
+        }
       ]
     },
     "views": {
@@ -219,6 +226,13 @@
         {
           "id": "konveyor-core.issueView",
           "name": "Konveyor"
+        }
+      ],
+      "konveyor-secondary": [
+        {
+          "id": "konveyor-core.secondarySidebarView",
+          "name": "Konveyor",
+          "when": "config:konveyor-core.experimentalSecondarySidebar"
         }
       ]
     },
@@ -405,6 +419,13 @@
           "description": "Enable debug logging for webview message handling",
           "scope": "window",
           "order": 40
+        },
+        "konveyor-core.experimentalSecondarySidebar": {
+          "type": "boolean",
+          "default": false,
+          "description": "(Experimental) Show Konveyor in the secondary (right) sidebar. Requires reload.",
+          "scope": "window",
+          "order": 50
         }
       }
     },

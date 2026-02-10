@@ -90,6 +90,9 @@ export const getConfigAutoAcceptOnSave = (): boolean =>
 export const getExcludedDiagnosticSources = (): string[] =>
   getConfigValue<string[]>("genai.excludedDiagnosticSources") ?? [];
 
+export const getConfigSecondarySidebarEnabled = (): boolean =>
+  getConfigValue<boolean>("experimentalSecondarySidebar") ?? false;
+
 /**
  * Get all configuration values for keys defined in the package.json file. Used in debugging.
  * @returns A record of all configuration values.

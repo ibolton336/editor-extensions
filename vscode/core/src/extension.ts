@@ -40,6 +40,7 @@ import {
   getConfigLogLevel,
   getConfigGenAIEnabled,
   getConfigAutoAcceptOnSave,
+  getConfigSecondarySidebarEnabled,
   updateConfigErrors,
 } from "./utilities";
 import {
@@ -847,6 +848,17 @@ class VsCodeExtension {
             this.state.logger.info(`Log level changed to ${newLogLevel}`);
           }
 
+          if (event.affectsConfiguration(`${EXTENSION_NAME}.experimentalSecondarySidebar`)) {
+            const enabled = getConfigSecondarySidebarEnabled();
+            this.state.logger.info(
+              `Secondary sidebar feature flag changed: ${enabled ? "enabled" : "disabled"}`,
+            );
+            // The view's `when` clause in package.json handles visibility.
+            // No additional runtime logic needed – VS Code re-evaluates the
+            // `config:konveyor-core.experimentalSecondarySidebar` when clause
+            // automatically when the setting changes.
+          }
+
           if (event.affectsConfiguration(`${EXTENSION_NAME}.analyzerPath`)) {
             this.state.logger.info("Analyzer path configuration modified!");
 
@@ -996,6 +1008,23 @@ class VsCodeExtension {
         {
           webviewOptions: { retainContextWhenHidden: true },
         },
+      ),
+    );
+
+    // Register secondary sidebar provider (experimental, behind feature flag).
+    // The view contribution in package.json uses a `when` clause to hide the
+    // view when the flag is off, but we always register the provider so VS Code
+    // can resolve it immediately when the user enables the setting.
+    const secondarySidebarProvider = new KonveyorGUIWebviewViewProvider(
+      this.state,
+      "secondarySidebar",
+    );
+    this.state.webviewProviders.set("secondarySidebar", secondarySidebarProvider);
+    this.context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(
+        KonveyorGUIWebviewViewProvider.SECONDARY_SIDEBAR_VIEW_TYPE,
+        secondarySidebarProvider,
+        { webviewOptions: { retainContextWhenHidden: true } },
       ),
     );
   }
