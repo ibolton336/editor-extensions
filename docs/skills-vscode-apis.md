@@ -69,7 +69,11 @@ This doc outlines how to use **skills** in this repo to leverage modern VSCode e
     - **When**: Working on LangGraph workflows, BaseNode, AnalysisIssueFix, DiagnosticsIssueFix, KaiModelProvider, tools, schemas, caching, the solution server client, or KaiInteractiveWorkflow.
     - **What**: Package architecture (`agentic/src/`), key interfaces (KaiModelProvider, KaiWorkflow, workflow messages), nodes (BaseNode, streaming/tool calls), LangGraph state schemas, tools (FileSystemTools, JavaDependencyTools), caching (FileBasedResponseCache, InMemoryCacheWithRevisions), two-phase interactive workflow, and how to add new nodes and tools.
 
-13. **`vscode-l10n`** (future)
+13. **`patternfly-chatbot`** -- `.claude/skills/patternfly-chatbot/`
+    - **When**: Working on the ResolutionsPage chat UI, adding chat messages, `Message`, `Chatbot`, `ChatbotContent`, `ChatbotFooter`, `MessageBox`, quick responses, tool messages, modified file messages, or scroll management.
+    - **What**: PatternFly Chatbot layout (`Chatbot`, `ChatbotContent`, `MessageBox`, `ChatbotFooter`), message components (`SentMessage`, `ReceivedMessage`, `ToolMessage`, `ModifiedFileMessage`), chat message type rendering, scroll management with `MessageBoxHandle`, CSS import order, and how to add new message types or chatbot features.
+
+14. **`vscode-l10n`** (future)
     - **When**: Adding or editing user-visible strings.
     - **What**: Use `vscode.l10n.t()` for all UI strings; placeholders like `{0}`, `{1}`; no raw user-facing English in extension code.
 
