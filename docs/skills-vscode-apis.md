@@ -57,11 +57,23 @@ This doc outlines how to use **skills** in this repo to leverage modern VSCode e
    - **When**: Editing the webview HTML template, Content-Security-Policy, nonce, `retainContextWhenHidden`, `onDidDispose`, `asWebviewUri`, `localResourceRoots`, or `acquireVsCodeApi`.
    - **What**: HTML shell and CSP (prod vs dev), asset URIs, lifecycle events (`WEBVIEW_READY`, visibility, dispose), `retainContextWhenHidden`, and how to add a new webview view.
 
-10. **`vscode-l10n`** (future)
+10. **`vite-webview-dev`** -- `.claude/skills/vite-webview-dev/`
+    - **When**: Editing `vite.config.ts`, the dev server, HMR, base path, build output, `DEV_SERVER_ROOT`, or webview asset loading in dev vs prod.
+    - **What**: Vite config settings (`base`, `server.cors`, rollup output), dev server flow (port 5173, `DEV_SERVER_ROOT`), production build to `webview-ui/build/`, shared library dependency, and adding new assets or entry points.
+
+11. **`webpack-extension-build`** -- `.claude/skills/webpack-extension-build/`
+    - **When**: Editing `webpack.config.js`, extension bundling, `CopyWebpackPlugin`, `DefinePlugin`, build-time constants, or the extension build output.
+    - **What**: Webpack config (target node, ts-loader, externals), DefinePlugin constants, CopyWebpackPlugin (copies webview build into `out/webview`), full build order, language-specific extension configs, and adding new constants or copy patterns.
+
+12. **`agentic-workflows`** -- `.claude/skills/agentic-workflows/`
+    - **When**: Working on LangGraph workflows, BaseNode, AnalysisIssueFix, DiagnosticsIssueFix, KaiModelProvider, tools, schemas, caching, the solution server client, or KaiInteractiveWorkflow.
+    - **What**: Package architecture (`agentic/src/`), key interfaces (KaiModelProvider, KaiWorkflow, workflow messages), nodes (BaseNode, streaming/tool calls), LangGraph state schemas, tools (FileSystemTools, JavaDependencyTools), caching (FileBasedResponseCache, InMemoryCacheWithRevisions), two-phase interactive workflow, and how to add new nodes and tools.
+
+13. **`vscode-l10n`** (future)
     - **When**: Adding or editing user-visible strings.
     - **What**: Use `vscode.l10n.t()` for all UI strings; placeholders like `{0}`, `{1}`; no raw user-facing English in extension code.
 
-For a **feature-flagged secondary sidebar** variant, **vscode-secondary-sidebar** and **vscode-webview-view-provider** are especially relevant; use **vscode-feature-flags** to gate the new container/view, and **vscode-webview-messages** / **vscode-extension-state** to keep messaging and state consistent. For state and rendering, **zustand-store**, **immer-state-updates**, and **vscode-webview-lifecycle** reduce context bloat by encoding the Zustand/Immer patterns and webview shell conventions once so the agent does not need to re-read `store.ts`, `getHtmlForWebview`, or the CSP logic on every task.
+For a **feature-flagged secondary sidebar** variant, **vscode-secondary-sidebar** and **vscode-webview-view-provider** are especially relevant; use **vscode-feature-flags** to gate the new container/view, and **vscode-webview-messages** / **vscode-extension-state** to keep messaging and state consistent. For state and rendering, **zustand-store**, **immer-state-updates**, and **vscode-webview-lifecycle** reduce context bloat by encoding the Zustand/Immer patterns and webview shell conventions once so the agent does not need to re-read `store.ts`, `getHtmlForWebview`, or the CSP logic on every task. For build pipeline, **vite-webview-dev** and **webpack-extension-build** encode the full Vite/Webpack setup so the agent knows the build order, dev server config, and asset flow without re-reading the config files.
 
 ## Skill layout
 
