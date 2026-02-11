@@ -89,7 +89,6 @@ Use the following npm command to run the extension and webview UI in watch mode:
 npm run dev
 ```
 
-
 ### Linting and formatting code
 
 The `eslint` and `prettier` packages are used across the repo to standardize formatting and enforce
