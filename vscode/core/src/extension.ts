@@ -3,12 +3,7 @@ import { EventEmitter } from "events";
 import { KonveyorGUIWebviewViewProvider } from "./KonveyorGUIWebviewViewProvider";
 import { registerAllCommands as registerAllCommands } from "./commands";
 import { ExtensionState } from "./extensionState";
-import {
-  ConfigError,
-  createConfigError,
-  ExtensionData,
-  MessageTypes,
-} from "@editor-extensions/shared";
+import { ConfigError, createConfigError, ExtensionData } from "@editor-extensions/shared";
 import { ViolationCodeActionProvider } from "./ViolationCodeActionProvider";
 import { AnalyzerClient } from "./client/analyzerClient";
 import {
@@ -26,6 +21,7 @@ import {
 } from "@editor-extensions/agentic";
 import { HubConnectionManager } from "./hub";
 import { Immutable, produce } from "immer";
+import { createExtensionStore } from "./store/extensionStore";
 import { registerAnalysisTrigger } from "./analysis";
 import { IssuesModel, registerIssueView } from "./issueView";
 import { ExtensionPaths, ensurePaths, paths, ensureKaiAnalyzerBinary } from "./paths";
@@ -136,144 +132,62 @@ class VsCodeExtension {
     );
     const getData = () => this.data;
 
-    // Update chat messages without triggering global state change (sends only chat delta to webview)
+    // Create the Zustand vanilla store with the same initial state
+    const store = createExtensionStore({
+      workspaceRoot: paths.workspaceRepo.toString(true),
+      isAgentMode: getConfigAgentMode(),
+      hubConfig: getDefaultHubConfig(),
+      isWebEnvironment,
+    });
+
+    // ── Mutation functions ─────────────────────────────────────────────
+    // Each mutator updates legacy this.data (for backward compat) AND
+    // mirrors the change to the Zustand store. The SyncBridge subscribes
+    // to the store and handles all webview messaging — no manual
+    // broadcastToWebviews calls needed.
+
     const mutateChatMessages = (
       recipe: (draft: ExtensionData) => void,
     ): Immutable<ExtensionData> => {
-      const oldMessages = getData().chatMessages;
       const data = produce(getData(), recipe);
-
-      // Update internal state WITHOUT firing global change event
       this.data = data;
-
-      // Optimize: Only send changed messages to reduce webview overhead
-      // If we're streaming (same number of messages), send just the last message
-      // Otherwise send the full array (for new messages, deletions, etc.)
-      const isStreamingUpdate =
-        data.chatMessages.length === oldMessages.length && data.chatMessages.length > 0;
-
-      if (isStreamingUpdate) {
-        // Streaming chunk - send only the last message for efficiency
-        const lastMessage = data.chatMessages[data.chatMessages.length - 1];
-        logger.info(`[Streaming] Sending incremental update`, {
-          messageIndex: data.chatMessages.length - 1,
-          messageLength: (lastMessage.value as any)?.message?.length || 0,
-          messageToken: lastMessage.messageToken,
-        });
-
-        // CRITICAL: Create a plain object copy to avoid Immer proxy issues
-        // Immer's immutable data might reuse object references internally
-        const plainMessage = JSON.parse(JSON.stringify(lastMessage));
-
-        // Broadcast streaming update to all webviews
-        broadcastToWebviews((provider) => {
-          provider.sendMessageToWebview({
-            type: MessageTypes.CHAT_MESSAGE_STREAMING_UPDATE,
-            message: plainMessage,
-            messageIndex: data.chatMessages.length - 1,
-            timestamp: new Date().toISOString(),
-          });
-        });
-      } else {
-        // Structure change - send full array
-        broadcastToWebviews((provider) => {
-          provider.sendMessageToWebview({
-            type: MessageTypes.CHAT_MESSAGES_UPDATE,
-            chatMessages: data.chatMessages,
-            previousLength: oldMessages.length,
-            timestamp: new Date().toISOString(),
-          });
-        });
-      }
-
+      store.getState().updateChat(recipe);
       return data;
     };
 
-    // Update analysis state and notify all listeners
     const mutateAnalysisState = (
       recipe: (draft: ExtensionData) => void,
     ): Immutable<ExtensionData> => {
       const data = produce(getData(), recipe);
       this.data = data;
-
-      // Send only analysis state to webviews
-      broadcastToWebviews((provider) => {
-        provider.sendMessageToWebview({
-          type: MessageTypes.ANALYSIS_STATE_UPDATE,
-          ruleSets: data.ruleSets,
-          enhancedIncidents: data.enhancedIncidents,
-          isAnalyzing: data.isAnalyzing,
-          isAnalysisScheduled: data.isAnalysisScheduled,
-          analysisProgress: data.analysisProgress,
-          analysisProgressMessage: data.analysisProgressMessage,
-          timestamp: new Date().toISOString(),
-        });
-      });
-
-      // Fire the global change event to notify extension listeners
+      store.getState().updateAnalysis(recipe);
       this._onDidChange.fire(this.data);
-
       return data;
     };
 
-    // Update solution workflow state without triggering global state change
     const mutateSolutionWorkflow = (
       recipe: (draft: ExtensionData) => void,
     ): Immutable<ExtensionData> => {
       const data = produce(getData(), recipe);
       this.data = data;
-
-      // Send only solution workflow state to webviews
-      broadcastToWebviews((provider) => {
-        provider.sendMessageToWebview({
-          type: MessageTypes.SOLUTION_WORKFLOW_UPDATE,
-          isFetchingSolution: data.isFetchingSolution,
-          solutionState: data.solutionState,
-          solutionScope: data.solutionScope,
-          isWaitingForUserInteraction: data.isWaitingForUserInteraction,
-          isProcessingQueuedMessages: data.isProcessingQueuedMessages,
-          pendingBatchReview: data.pendingBatchReview || [],
-          timestamp: new Date().toISOString(),
-        });
-      });
-
+      store.getState().updateSolution(recipe);
       return data;
     };
 
-    // Update server state without triggering global state change
     const mutateServerState = (
       recipe: (draft: ExtensionData) => void,
     ): Immutable<ExtensionData> => {
       const data = produce(getData(), recipe);
       this.data = data;
-
-      // Send only server state to webviews
-      broadcastToWebviews((provider) => {
-        provider.sendMessageToWebview({
-          type: MessageTypes.SERVER_STATE_UPDATE,
-          serverState: data.serverState,
-          isStartingServer: data.isStartingServer,
-          isInitializingServer: data.isInitializingServer,
-          solutionServerConnected: data.solutionServerConnected,
-          profileSyncConnected: data.profileSyncConnected,
-          llmProxyAvailable: data.llmProxyAvailable,
-          timestamp: new Date().toISOString(),
-        });
-      });
-
+      store.getState().updateServer(recipe);
       return data;
     };
 
-    // Update profiles without triggering global state change
     const mutateProfiles = (recipe: (draft: ExtensionData) => void): Immutable<ExtensionData> => {
       const data = produce(getData(), recipe);
 
-      // Compute isInTreeMode: true when hub profiles are present
-      // This means profiles are managed by Hub, not created in the webview
       const isInTreeMode = data.profiles.some((p) => p.source === "hub");
 
-      // Warn user if they have hub profiles but profile sync is disabled
-      // They need to delete the synced profiles to regain control
       if (isInTreeMode && !data.hubConfig?.features?.profileSync?.enabled) {
         this.state?.logger?.warn(
           "Hub-synced profiles detected but profile sync is disabled. " +
@@ -281,93 +195,40 @@ class VsCodeExtension {
         );
       }
 
-      // Update isInTreeMode in state
       this.data = produce(data, (draft) => {
         draft.isInTreeMode = isInTreeMode;
       });
 
-      // Send only profiles to webviews
-      broadcastToWebviews((provider) => {
-        provider.sendMessageToWebview({
-          type: MessageTypes.PROFILES_UPDATE,
-          profiles: this.data.profiles,
-          activeProfileId: this.data.activeProfileId,
-          isInTreeMode: this.data.isInTreeMode,
-          timestamp: new Date().toISOString(),
-        });
+      // Mirror to store including computed isInTreeMode
+      store.getState().updateProfiles((draft) => {
+        recipe(draft);
+        draft.isInTreeMode = draft.profiles.some((p: any) => p.source === "hub");
       });
 
       return this.data;
     };
 
-    // Update config errors without triggering global state change
     const mutateConfigErrors = (
       recipe: (draft: ExtensionData) => void,
     ): Immutable<ExtensionData> => {
       const data = produce(getData(), recipe);
       this.data = data;
-
-      // Send only config errors to webviews
-      broadcastToWebviews((provider) => {
-        provider.sendMessageToWebview({
-          type: MessageTypes.CONFIG_ERRORS_UPDATE,
-          configErrors: data.configErrors,
-          timestamp: new Date().toISOString(),
-        });
-      });
-
+      store.getState().updateConfig(recipe);
       return data;
     };
 
-    // Update decorators without triggering global state change
     const mutateDecorators = (recipe: (draft: ExtensionData) => void): Immutable<ExtensionData> => {
       const data = produce(getData(), recipe);
       this.data = data;
-
-      // Send only decorators to webviews
-      broadcastToWebviews((provider) => {
-        provider.sendMessageToWebview({
-          type: MessageTypes.DECORATORS_UPDATE,
-          activeDecorators: data.activeDecorators || {},
-          timestamp: new Date().toISOString(),
-        });
-      });
-
+      store.getState().updateDecorators(recipe);
       return data;
     };
 
-    // Update settings without triggering global state change
     const mutateSettings = (recipe: (draft: ExtensionData) => void): Immutable<ExtensionData> => {
       const data = produce(getData(), recipe);
       this.data = data;
-
-      // Send only settings to webviews
-      broadcastToWebviews((provider) => {
-        provider.sendMessageToWebview({
-          type: MessageTypes.SETTINGS_UPDATE,
-          solutionServerEnabled: data.solutionServerEnabled,
-          isAgentMode: data.isAgentMode,
-          isContinueInstalled: data.isContinueInstalled,
-          hubConfig: data.hubConfig,
-          hubForced: data.hubForced,
-          profileSyncEnabled: data.profileSyncEnabled,
-          isSyncingProfiles: data.isSyncingProfiles,
-          llmProxyAvailable: data.llmProxyAvailable,
-          timestamp: new Date().toISOString(),
-        });
-      });
-
+      store.getState().updateSettings(recipe);
       return data;
-    };
-
-    // Helper to safely broadcast messages to webview providers
-    const broadcastToWebviews = (messageFn: (provider: KonveyorGUIWebviewViewProvider) => void) => {
-      const extensionState = (this as VsCodeExtension).state;
-      if (extensionState?.webviewProviders) {
-        extensionState.webviewProviders.forEach((provider) => {
-          messageFn(provider);
-        });
-      }
     };
 
     const taskManager = new DiagnosticTaskManager(getExcludedDiagnosticSources());
@@ -390,6 +251,7 @@ class VsCodeExtension {
       kaiFsCache: new InMemoryCacheWithRevisions(true),
       taskManager,
       logger,
+      store,
       get data() {
         return getData();
       },

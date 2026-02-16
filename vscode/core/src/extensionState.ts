@@ -18,6 +18,7 @@ import { StaticDiffAdapter } from "./diff/staticDiffAdapter";
 import { BatchedAnalysisTrigger } from "./analysis/batchedAnalysisTrigger";
 import { MessageQueueManager } from "./utilities/ModifiedFiles/queueManager";
 import { HubConnectionManager } from "./hub";
+import type { ExtensionStore } from "./store/extensionStore";
 
 export interface ExtensionState {
   analyzerClient: AnalyzerClient;
@@ -26,6 +27,7 @@ export interface ExtensionState {
   extensionContext: vscode.ExtensionContext;
   diagnosticCollection: vscode.DiagnosticCollection;
   issueModel: IssuesModel;
+  store: ExtensionStore;
   data: Immutable<ExtensionData>;
   mutateChatMessages: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;
   mutateAnalysisState: (recipe: (draft: ExtensionData) => void) => Immutable<ExtensionData>;

@@ -99,6 +99,12 @@ export enum ChatMessageType {
   Tool = "ToolChatMessage",
   ModifiedFile = "ModifiedFileChatMessage",
   BatchReview = "BatchReviewChatMessage",
+  // Extensible types for future Goose CLI compatibility
+  Thinking = "ThinkingChatMessage",
+  ToolRequest = "ToolRequestChatMessage",
+  ToolResponse = "ToolResponseChatMessage",
+  QuickResponse = "QuickResponseChatMessage",
+  System = "SystemChatMessage",
 }
 
 export interface QuickResponse {

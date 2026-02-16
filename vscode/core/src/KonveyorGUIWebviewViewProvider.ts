@@ -13,10 +13,12 @@ import {
   window,
 } from "vscode";
 import { getNonce } from "./utilities/getNonce";
-import { ExtensionData, MessageTypes, WebviewType } from "@editor-extensions/shared";
+import { ExtensionData, WebviewType } from "@editor-extensions/shared";
 import { Immutable } from "immer";
 import jsesc from "jsesc";
 import { EXTENSION_NAME, EXTENSION_SHORT_NAME } from "./utilities/constants";
+import { createSyncBridge, WebviewMessageConsumer, type SyncBridge } from "./store/syncBridge";
+import { createDefaultBindings } from "./store/slices";
 
 const DEV_SERVER_ROOT = "http://localhost:5173/out/webview";
 
@@ -45,6 +47,8 @@ export class KonveyorGUIWebviewViewProvider implements WebviewViewProvider {
   private _messageQueue: any[] = [];
   private _webviewReadyListenerDisposable?: Disposable; // Listener for WEBVIEW_READY message
   private _commandMessageListenerDisposable?: Disposable; // Listener for all other webview commands
+  private _syncBridge?: SyncBridge;
+  private _syncConsumer?: WebviewMessageConsumer;
 
   constructor(
     private readonly _extensionState: ExtensionState,
@@ -63,13 +67,15 @@ export class KonveyorGUIWebviewViewProvider implements WebviewViewProvider {
     this._view = webviewView;
     this.initializeWebview(webviewView.webview, this._extensionState.data);
 
-    // When webview becomes visible again, refresh state to ensure latest data
+    // Set up sync bridge for selective state updates
+    this._setupSyncBridge(webviewView.webview);
+
+    // When webview becomes visible again, resume the sync bridge
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
-        this.sendMessageToWebview({
-          type: MessageTypes.FULL_STATE_UPDATE,
-          ...this._extensionState.data,
-        });
+        this._syncBridge?.resume();
+      } else {
+        this._syncBridge?.pause();
       }
     });
   }
@@ -146,13 +152,15 @@ export class KonveyorGUIWebviewViewProvider implements WebviewViewProvider {
 
     this.initializeWebview(this._panel.webview, this._extensionState.data);
 
-    // When panel becomes visible/active again, refresh state to ensure latest data
+    // Set up sync bridge for selective state updates
+    this._setupSyncBridge(this._panel.webview);
+
+    // When panel becomes visible/active again, resume the sync bridge
     this._panel.onDidChangeViewState((e) => {
       if (e.webviewPanel.visible && e.webviewPanel.active) {
-        this.sendMessageToWebview({
-          type: MessageTypes.FULL_STATE_UPDATE,
-          ...this._extensionState.data,
-        });
+        this._syncBridge?.resume();
+      } else {
+        this._syncBridge?.pause();
       }
     });
 
@@ -353,6 +361,17 @@ export class KonveyorGUIWebviewViewProvider implements WebviewViewProvider {
       if (message.type === "WEBVIEW_READY") {
         this._isWebviewReady = true;
         this._isPanelReady = true;
+
+        // Mark the sync consumer as ready and flush its pre-ready queue
+        if (this._syncConsumer) {
+          this._syncConsumer.setReady();
+          this._syncConsumer.flush();
+        }
+
+        // Send current state for all slices (replaces FULL_STATE_UPDATE)
+        this._syncBridge?.syncAll();
+
+        // Flush any legacy queued messages
         while (this._messageQueue.length > 0) {
           const queuedMessage = this._messageQueue.shift();
           this.sendMessage(queuedMessage, webview);
@@ -361,7 +380,34 @@ export class KonveyorGUIWebviewViewProvider implements WebviewViewProvider {
     });
   }
 
+  /**
+   * Set up the SyncBridge for this webview.
+   * Creates a WebviewMessageConsumer wrapping the webview's postMessage,
+   * and a SyncBridge with default bindings against the extension store.
+   */
+  private _setupSyncBridge(webview: Webview): void {
+    // Dispose any existing bridge
+    this._syncBridge?.dispose();
+    this._syncConsumer?.dispose();
+
+    this._syncConsumer = new WebviewMessageConsumer((msg) => webview.postMessage(msg));
+    this._syncBridge = createSyncBridge({
+      store: this._extensionState.store,
+      consumer: this._syncConsumer,
+      bindings: createDefaultBindings(),
+    });
+
+    // Start watching for state changes
+    this._syncBridge.connect();
+  }
+
   public dispose() {
+    // Dispose sync bridge
+    this._syncBridge?.dispose();
+    this._syncBridge = undefined;
+    this._syncConsumer?.dispose();
+    this._syncConsumer = undefined;
+
     // Clear instance state
     this._panel = undefined;
     this._isWebviewReady = false;
