@@ -94,7 +94,7 @@ export class HubConfigurationPage {
       console.log('Hub configuration unchanged; Save is disabled, skipping click');
     }
 
-    await view.owner().screenshot({
+    await this.vsCode.getWindow().screenshot({
       path: pathlib.join(SCREENSHOTS_FOLDER, `last-hub-configuration.png`),
     });
   }

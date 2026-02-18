@@ -37,7 +37,20 @@ export async function saveHubConfig(
   context: vscode.ExtensionContext,
   config: HubConfig,
 ): Promise<void> {
-  await context.secrets.store(HUB_CONFIG_SECRET_KEY, JSON.stringify(config));
+  try {
+    const configString = JSON.stringify(config);
+
+    // Add a timeout to prevent hanging indefinitely if the system's keyring can't be reached
+    const storePromise = context.secrets.store(HUB_CONFIG_SECRET_KEY, configString);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Secret storage timeout after 5s")), 5000),
+    );
+
+    await Promise.race([storePromise, timeoutPromise]);
+  } catch (error) {
+    console.error("[saveHubConfig] Error saving hub config:", error);
+    console.warn("[saveHubConfig] Continuing despite secret storage failure");
+  }
 }
 
 /**

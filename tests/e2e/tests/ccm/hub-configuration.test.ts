@@ -4,6 +4,9 @@ import { HubConfigurationPage } from '../../pages/hub-configuration.page';
 import { getHubConfig } from '../../utilities/utils';
 import * as VSCodeFactory from '../../utilities/vscode.factory';
 import { KAIViews } from '../../enums/views.enum';
+import { OutputPanel } from '../../pages/output.page';
+import { OutputChannels } from '../../enums/output.enum';
+import { SEC } from '../../utilities/consts';
 
 test.describe(
   'Hub Configuration Tests',
@@ -28,36 +31,9 @@ test.describe(
       const hubConfigPage = await HubConfigurationPage.open(vscodeApp);
       await hubConfigPage.fillForm(hubConfig);
 
-      // Check for any notification (success or failure) to understand what's happening
-      const successNotification = vscodeApp
-        .getWindow()
-        .locator('.notification-list-item-message span', {
-          hasText: /Successfully connected to Hub solution server/i,
-        });
-
-      const failureNotification = vscodeApp
-        .getWindow()
-        .locator('.notification-list-item-message span', {
-          hasText: /Failed to connect/i,
-        });
-
-      const hasSuccess = await successNotification.isVisible().catch(() => false);
-      const hasFailure = await failureNotification.isVisible().catch(() => false);
-
-      if (hasSuccess) {
-        console.log('Successfully connected to Hub solution server');
-      } else if (hasFailure) {
-        console.log('Failed to connect to Hub solution server - notification visible');
-      } else {
-        console.log('No hub connection notification visible');
-      }
-
-      // Verify hub is enabled in the configuration view (regardless of connection status)
-      await vscodeApp.openAnalysisView();
-      await vscodeApp.openConfiguration();
-      const analysisView = await vscodeApp.getView(KAIViews.analysisView);
-      await analysisView.locator('#configure-hub-settings-button').click();
-
+      await vscodeApp.assertNotification('Successfully connected to Hub solution server');
+      await vscodeApp.executeQuickCommand('Developer: Reload Window');
+      await hubConfigPage.openHubConfiguration();
       const view = await vscodeApp.getView(KAIViews.hubConfiguration);
       await expect(view.locator('input#hub-enabled')).toBeChecked();
     });
