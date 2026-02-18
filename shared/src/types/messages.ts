@@ -14,16 +14,18 @@ import {
 } from "./types";
 
 export const MessageTypes = {
-  CHAT_MESSAGES_UPDATE: "CHAT_MESSAGES_UPDATE",
-  CHAT_MESSAGE_STREAMING_UPDATE: "CHAT_MESSAGE_STREAMING_UPDATE",
-
+  // Core state
   STATE_CHANGE: "STATE_CHANGE",
   FOCUS_VIOLATION: "FOCUS_VIOLATION",
 
-  // Goose (experimental) — all goose messaging is self-contained here
+  // Chat (kai resolution workflow)
+  CHAT_STATE_CHANGE: "CHAT_STATE_CHANGE",
+  CHAT_STREAMING_UPDATE: "CHAT_STREAMING_UPDATE",
+
+  // Goose (experimental)
   GOOSE_STATE_CHANGE: "GOOSE_STATE_CHANGE",
-  GOOSE_CHAT_UPDATE: "GOOSE_CHAT_UPDATE",
-  GOOSE_CHAT_STREAMING: "GOOSE_CHAT_STREAMING",
+  GOOSE_CHAT_STATE_CHANGE: "GOOSE_CHAT_STATE_CHANGE",
+  GOOSE_CHAT_STREAMING_UPDATE: "GOOSE_CHAT_STREAMING_UPDATE",
 } as const;
 
 export type MessageType = (typeof MessageTypes)[keyof typeof MessageTypes];
@@ -32,17 +34,17 @@ export type MessageType = (typeof MessageTypes)[keyof typeof MessageTypes];
  * Message types for VSCode extension -> Webview communication
  */
 
-// Chat/messaging updates
-export interface ChatMessagesUpdateMessage {
-  type: "CHAT_MESSAGES_UPDATE";
+// Chat state change (full array replacement)
+export interface ChatStateChangeMessage {
+  type: "CHAT_STATE_CHANGE";
   chatMessages: ChatMessage[];
   previousLength: number;
   timestamp: string;
 }
 
-// Chat streaming update (incremental - just one message)
-export interface ChatMessageStreamingUpdateMessage {
-  type: "CHAT_MESSAGE_STREAMING_UPDATE";
+// Chat streaming update (incremental — just one message)
+export interface ChatStreamingUpdateMessage {
+  type: "CHAT_STREAMING_UPDATE";
   message: ChatMessage;
   messageIndex: number;
   timestamp: string;
@@ -116,14 +118,14 @@ export interface GooseStateChangeMessage {
   timestamp: string;
 }
 
-export interface GooseChatUpdateMessage {
-  type: "GOOSE_CHAT_UPDATE";
+export interface GooseChatStateChangeMessage {
+  type: "GOOSE_CHAT_STATE_CHANGE";
   messages: GooseChatMessage[];
   timestamp: string;
 }
 
-export interface GooseChatStreamingMessage {
-  type: "GOOSE_CHAT_STREAMING";
+export interface GooseChatStreamingUpdateMessage {
+  type: "GOOSE_CHAT_STREAMING_UPDATE";
   messageId: string;
   content: string;
   done: boolean;
@@ -134,27 +136,18 @@ export interface GooseChatStreamingMessage {
  * Union type of all possible webview messages
  */
 export type WebviewMessage =
-  | ChatMessagesUpdateMessage
-  | ChatMessageStreamingUpdateMessage
   | StateChangeMessage
   | FocusViolationMessage
+  | ChatStateChangeMessage
+  | ChatStreamingUpdateMessage
   | GooseStateChangeMessage
-  | GooseChatUpdateMessage
-  | GooseChatStreamingMessage;
+  | GooseChatStateChangeMessage
+  | GooseChatStreamingUpdateMessage;
 
 /**
  * Type guards for message discrimination
  */
-export function isChatMessagesUpdate(msg: WebviewMessage): msg is ChatMessagesUpdateMessage {
-  return (msg as any).type === "CHAT_MESSAGES_UPDATE";
-}
-
-export function isChatMessageStreamingUpdate(
-  msg: WebviewMessage,
-): msg is ChatMessageStreamingUpdateMessage {
-  return (msg as any).type === "CHAT_MESSAGE_STREAMING_UPDATE";
-}
-
+// Core
 export function isStateChange(msg: WebviewMessage): msg is StateChangeMessage {
   return (msg as any).type === MessageTypes.STATE_CHANGE;
 }
@@ -163,14 +156,26 @@ export function isFocusViolation(msg: WebviewMessage): msg is FocusViolationMess
   return (msg as any).type === MessageTypes.FOCUS_VIOLATION;
 }
 
+// Chat
+export function isChatStateChange(msg: WebviewMessage): msg is ChatStateChangeMessage {
+  return (msg as any).type === MessageTypes.CHAT_STATE_CHANGE;
+}
+
+export function isChatStreamingUpdate(msg: WebviewMessage): msg is ChatStreamingUpdateMessage {
+  return (msg as any).type === MessageTypes.CHAT_STREAMING_UPDATE;
+}
+
+// Goose
 export function isGooseStateChange(msg: WebviewMessage): msg is GooseStateChangeMessage {
   return (msg as any).type === MessageTypes.GOOSE_STATE_CHANGE;
 }
 
-export function isGooseChatUpdate(msg: WebviewMessage): msg is GooseChatUpdateMessage {
-  return (msg as any).type === MessageTypes.GOOSE_CHAT_UPDATE;
+export function isGooseChatStateChange(msg: WebviewMessage): msg is GooseChatStateChangeMessage {
+  return (msg as any).type === MessageTypes.GOOSE_CHAT_STATE_CHANGE;
 }
 
-export function isGooseChatStreaming(msg: WebviewMessage): msg is GooseChatStreamingMessage {
-  return (msg as any).type === MessageTypes.GOOSE_CHAT_STREAMING;
+export function isGooseChatStreamingUpdate(
+  msg: WebviewMessage,
+): msg is GooseChatStreamingUpdateMessage {
+  return (msg as any).type === MessageTypes.GOOSE_CHAT_STREAMING_UPDATE;
 }

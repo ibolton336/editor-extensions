@@ -75,7 +75,7 @@ export class KonveyorGUIWebviewViewProvider implements WebviewViewProvider {
           timestamp,
         });
         this.sendMessageToWebview({
-          type: MessageTypes.CHAT_MESSAGES_UPDATE,
+          type: MessageTypes.CHAT_STATE_CHANGE,
           chatMessages,
           previousLength: 0,
           timestamp,
@@ -172,7 +172,7 @@ export class KonveyorGUIWebviewViewProvider implements WebviewViewProvider {
           timestamp,
         });
         this.sendMessageToWebview({
-          type: MessageTypes.CHAT_MESSAGES_UPDATE,
+          type: MessageTypes.CHAT_STATE_CHANGE,
           chatMessages,
           previousLength: 0,
           timestamp,

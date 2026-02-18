@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
 import {
   WebviewMessage,
-  isChatMessagesUpdate,
-  isChatMessageStreamingUpdate,
   isStateChange,
   isFocusViolation,
+  isChatStateChange,
+  isChatStreamingUpdate,
   isGooseStateChange,
-  isGooseChatUpdate,
-  isGooseChatStreaming,
+  isGooseChatStateChange,
+  isGooseChatStreamingUpdate,
   ConfigErrorType,
 } from "@editor-extensions/shared";
 import { useExtensionStore } from "../store/store";
@@ -52,7 +52,7 @@ export function useVSCodeMessageHandler() {
         const store = useExtensionStore.getState();
 
         // Handle streaming update (incremental - just one message changed)
-        if (isChatMessageStreamingUpdate(message)) {
+        if (isChatStreamingUpdate(message)) {
           // Throttle streaming updates to prevent render death spiral
           // Store the latest update and batch them
           pendingStreamingUpdateRef.current = {
@@ -99,7 +99,7 @@ export function useVSCodeMessageHandler() {
         }
 
         // Handle full chat messages update (structure changed)
-        if (isChatMessagesUpdate(message)) {
+        if (isChatStateChange(message)) {
           // Limit chat messages to prevent memory issues
           const limitedMessages =
             message.chatMessages.length > MAX_CHAT_MESSAGES
@@ -154,12 +154,12 @@ export function useVSCodeMessageHandler() {
         }
 
         // Handle Goose chat updates (experimental)
-        if (isGooseChatUpdate(message)) {
+        if (isGooseChatStateChange(message)) {
           store.setGooseMessages(message.messages);
           return;
         }
 
-        if (isGooseChatStreaming(message)) {
+        if (isGooseChatStreamingUpdate(message)) {
           if (message.done) {
             store.finalizeGooseMessage(message.messageId);
           } else {

@@ -187,7 +187,7 @@ export function setupSyncBridges(
           const plainMessage = JSON.parse(JSON.stringify(lastMessage));
 
           broadcast(getProviders, {
-            type: MessageTypes.CHAT_MESSAGE_STREAMING_UPDATE,
+            type: MessageTypes.CHAT_STREAMING_UPDATE,
             message: plainMessage,
             messageIndex: currentLength - 1,
             timestamp: new Date().toISOString(),
@@ -195,7 +195,7 @@ export function setupSyncBridges(
         } else {
           // Structural change — send full array
           broadcast(getProviders, {
-            type: MessageTypes.CHAT_MESSAGES_UPDATE,
+            type: MessageTypes.CHAT_STATE_CHANGE,
             chatMessages,
             previousLength: previousChatMessagesLength,
             timestamp: new Date().toISOString(),

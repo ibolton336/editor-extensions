@@ -784,7 +784,7 @@ class VsCodeExtension {
       gooseClient.on("streamingChunk", (messageId: string, content: string) => {
         for (const provider of this.state.webviewProviders.values()) {
           provider.sendMessageToWebview({
-            type: MessageTypes.GOOSE_CHAT_STREAMING,
+            type: MessageTypes.GOOSE_CHAT_STREAMING_UPDATE,
             messageId,
             content,
             done: false,
@@ -796,7 +796,7 @@ class VsCodeExtension {
       gooseClient.on("streamingComplete", (messageId: string, stopReason: string) => {
         for (const provider of this.state.webviewProviders.values()) {
           provider.sendMessageToWebview({
-            type: MessageTypes.GOOSE_CHAT_STREAMING,
+            type: MessageTypes.GOOSE_CHAT_STREAMING_UPDATE,
             messageId,
             content: "",
             done: true,
