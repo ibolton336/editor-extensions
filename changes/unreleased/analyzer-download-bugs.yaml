@@ -1,5 +1,0 @@
-kind: bugfix
-description: >
-  Fix analyzer binary download to track version metadata for outdated binary
-  detection and provide actionable error messages in network-restricted
-  environments.

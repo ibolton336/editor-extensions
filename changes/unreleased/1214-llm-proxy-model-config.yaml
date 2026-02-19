@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Avoid opening default model provider config when LLM proxy is available.

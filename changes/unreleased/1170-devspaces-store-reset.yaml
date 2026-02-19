@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed catch-all causing store reset in devspaces.

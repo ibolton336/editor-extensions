@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Ensured profiles are reloaded after enabling sync.

@@ -1,5 +1,0 @@
-kind: feature
-description: >
-  Added C# language extension support.
-extensions:
-  - csharp

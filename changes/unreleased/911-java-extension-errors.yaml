@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Improved logging and error display when Java extension encounters issues.

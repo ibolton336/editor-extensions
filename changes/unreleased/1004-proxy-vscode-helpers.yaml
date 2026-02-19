@@ -1,5 +1,0 @@
-kind: bugfix
-description: >
-  Added helper methods to the proxy for vscode object conversion.
-extensions:
-  - javascript

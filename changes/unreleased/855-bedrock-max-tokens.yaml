@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed handling of max_tokens in Bedrock responses.

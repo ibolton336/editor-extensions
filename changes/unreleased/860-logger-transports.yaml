@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed logger transports update when log level changes.

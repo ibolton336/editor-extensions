@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed socket ETIMEDOUT connection errors.
