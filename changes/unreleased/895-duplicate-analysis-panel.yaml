@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed duplicate Analysis panel issue by implementing static panel tracking.

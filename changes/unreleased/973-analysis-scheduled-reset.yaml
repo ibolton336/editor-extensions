@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Ensure analysis scheduled state is always reset.

@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Allow user to reject changes by default without auto accept on save.

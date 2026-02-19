@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed provider check race condition on server start.

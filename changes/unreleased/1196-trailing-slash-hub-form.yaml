@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Removed trailing slash in hub config form.

@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Reduced diff noise from line endings and whitespace changes.

@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Improved handling of centralized config auth failures.

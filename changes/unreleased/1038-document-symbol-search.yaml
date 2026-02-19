@@ -1,5 +1,0 @@
-kind: bugfix
-description: >
-  Added documentSymbol search and fixed workspace/symbol response.
-extensions:
-  - javascript

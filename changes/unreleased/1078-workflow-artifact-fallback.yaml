@@ -1,3 +1,0 @@
-kind: enhancement
-description: >
-  Added fallback to recent successful workflow run when HEAD commit fails.

@@ -1,3 +1,0 @@
-kind: enhancement
-description: >
-  Removed onDidChangeData message handler and duplicate broadcast functions.

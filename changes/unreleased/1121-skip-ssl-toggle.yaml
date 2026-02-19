@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Enabled skip SSL toggle even when auth is disabled.

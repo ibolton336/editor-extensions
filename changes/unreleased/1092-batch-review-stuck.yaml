@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed batch review state stuck after apply all.

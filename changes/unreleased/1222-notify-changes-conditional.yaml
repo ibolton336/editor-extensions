@@ -1,3 +1,0 @@
-kind: bugfix
-description: >
-  Fixed notify changes by moving it out of conditional block.

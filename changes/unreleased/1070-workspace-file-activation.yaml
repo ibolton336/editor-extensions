@@ -1,7 +1,0 @@
-kind: feature
-description: >
-  Activated language extensions based on workspace files.
-extensions:
-  - java
-  - javascript
-  - go
