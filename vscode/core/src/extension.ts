@@ -3,7 +3,12 @@ import { EventEmitter } from "events";
 import { KonveyorGUIWebviewViewProvider } from "./KonveyorGUIWebviewViewProvider";
 import { registerAllCommands as registerAllCommands } from "./commands";
 import { ExtensionState } from "./extensionState";
-import { ConfigError, createConfigError, ExtensionData } from "@editor-extensions/shared";
+import {
+  ConfigError,
+  createConfigError,
+  ExtensionData,
+  GooseAgentState,
+} from "@editor-extensions/shared";
 import { ViolationCodeActionProvider } from "./ViolationCodeActionProvider";
 import { AnalyzerClient } from "./client/analyzerClient";
 import {
@@ -68,7 +73,6 @@ import { KonveyorCoreApi } from "@editor-extensions/shared";
 class VsCodeExtension {
   public state: ExtensionState;
   public store: ExtensionStore;
-  private data: Immutable<ExtensionData>;
   private _onDidChange = new vscode.EventEmitter<Immutable<ExtensionData>>();
   readonly onDidChangeData = this._onDidChange.event;
   private listeners: vscode.Disposable[] = [];
@@ -122,105 +126,48 @@ class VsCodeExtension {
       isSyncingProfiles: false,
       llmProxyAvailable: false,
       isWebEnvironment,
+      gooseState: "stopped" as GooseAgentState,
+      gooseError: undefined,
     };
 
     this.store = createExtensionStore(initialData);
-    // Keep this.data as a getter for backward compatibility (used by onDidChangeData listeners)
-    this.data = this.store.getState() as Immutable<ExtensionData>;
 
     const getData = () => this.store.getState() as Immutable<ExtensionData>;
 
-    // --- Mutate functions ---
-    // These are thin wrappers around store.setState(). The sync bridges
-    // (set up in initialize()) handle all webview broadcasting automatically
-    // via store subscriptions. All ~100 existing call sites remain unchanged.
-
-    const mutateChatMessages = (
-      recipe: (draft: ExtensionData) => void,
-    ): Immutable<ExtensionData> => {
+    const mutate = (recipe: (draft: ExtensionData) => void): void => {
       this.store.setState(recipe);
-      this.data = getData();
-      return this.data;
     };
 
-    const mutateAnalysisState = (
-      recipe: (draft: ExtensionData) => void,
-    ): Immutable<ExtensionData> => {
-      this.store.setState(recipe);
-      this.data = getData();
-      return this.data;
-    };
-
-    const mutateSolutionWorkflow = (
-      recipe: (draft: ExtensionData) => void,
-    ): Immutable<ExtensionData> => {
-      this.store.setState(recipe);
-      this.data = getData();
-      return this.data;
-    };
-
-    const mutateServerState = (
-      recipe: (draft: ExtensionData) => void,
-    ): Immutable<ExtensionData> => {
-      this.store.setState(recipe);
-      this.data = getData();
-      return this.data;
-    };
-
-    const mutateProfiles = (recipe: (draft: ExtensionData) => void): Immutable<ExtensionData> => {
-      // Apply the recipe first
-      this.store.setState(recipe);
-
-      // Compute isInTreeMode: true when hub profiles are present
-      const state = this.store.getState();
-      const isInTreeMode = state.profiles.some((p) => p.source === "hub");
-
-      // Warn user if they have hub profiles but profile sync is disabled
-      if (isInTreeMode && !state.hubConfig?.features?.profileSync?.enabled) {
-        this.state?.logger?.warn(
-          "Hub-synced profiles detected but profile sync is disabled. " +
-            "Delete the .konveyor/profiles directory to manage profiles in the webview.",
-        );
-      }
-
-      // Update isInTreeMode if it changed
-      if (state.isInTreeMode !== isInTreeMode) {
-        this.store.setState((draft) => {
-          draft.isInTreeMode = isInTreeMode;
-        });
-      }
-
-      this.data = getData();
-      return this.data;
-    };
-
-    const mutateConfigErrors = (
-      recipe: (draft: ExtensionData) => void,
-    ): Immutable<ExtensionData> => {
-      this.store.setState(recipe);
-      this.data = getData();
-      return this.data;
-    };
-
-    const mutateDecorators = (recipe: (draft: ExtensionData) => void): Immutable<ExtensionData> => {
-      this.store.setState(recipe);
-      this.data = getData();
-      return this.data;
-    };
-
-    const mutateSettings = (recipe: (draft: ExtensionData) => void): Immutable<ExtensionData> => {
-      this.store.setState(recipe);
-      this.data = getData();
-      return this.data;
-    };
+    // Derive isInTreeMode whenever profiles change
+    this.store.subscribe(
+      (s) => s.profiles,
+      (profiles, previousProfiles) => {
+        if (profiles === previousProfiles) {
+          return;
+        }
+        const isInTreeMode = profiles.some((p) => p.source === "hub");
+        const current = this.store.getState().isInTreeMode;
+        if (current !== isInTreeMode) {
+          this.store.setState((draft) => {
+            draft.isInTreeMode = isInTreeMode;
+          });
+        }
+        if (isInTreeMode && !this.store.getState().hubConfig?.features?.profileSync?.enabled) {
+          this.state?.logger?.warn(
+            "Hub-synced profiles detected but profile sync is disabled. " +
+              "Delete the .konveyor/profiles directory to manage profiles in the webview.",
+          );
+        }
+      },
+      { equalityFn: (a, b) => a === b },
+    );
 
     const taskManager = new DiagnosticTaskManager(getExcludedDiagnosticSources());
 
     this.state = {
       analyzerClient: new AnalyzerClient(
         context,
-        mutateServerState,
-        mutateAnalysisState,
+        mutate,
         getData,
         taskManager,
         logger,
@@ -238,14 +185,7 @@ class VsCodeExtension {
       get data() {
         return getData();
       },
-      mutateChatMessages,
-      mutateAnalysisState,
-      mutateSolutionWorkflow,
-      mutateServerState,
-      mutateProfiles,
-      mutateConfigErrors,
-      mutateDecorators,
-      mutateSettings,
+      mutate,
       modifiedFiles: new Map(),
       modifiedFilesEventEmitter: new EventEmitter(),
       lastMessageId: "0",
@@ -325,7 +265,7 @@ class VsCodeExtension {
 
       // Initialize hub config from secret storage (with migration)
       const hubConfig = await initializeHubConfig(this.context);
-      this.state.mutateSettings((draft) => {
+      this.state.mutate((draft) => {
         draft.hubConfig = hubConfig;
         draft.hubForced = isHubForced();
         draft.solutionServerEnabled =
@@ -344,13 +284,13 @@ class VsCodeExtension {
         matchingProfile?.id ?? (allProfiles.length > 0 ? allProfiles[0].id : null);
 
       // Broadcast profiles to webview using granular update
-      this.state.mutateProfiles((draft) => {
+      this.state.mutate((draft) => {
         draft.profiles = allProfiles;
         draft.activeProfileId = activeProfileId;
       });
 
       // Update config errors
-      this.state.mutateConfigErrors((draft) => {
+      this.state.mutate((draft) => {
         this.updateConfigurationErrors(draft);
       });
 
@@ -360,7 +300,7 @@ class VsCodeExtension {
       this.setupModelProvider(paths().settingsYaml)
         .then((configError) => {
           if (configError) {
-            this.state.mutateConfigErrors((draft) => {
+            this.state.mutate((draft) => {
               draft.configErrors.push(configError);
             });
           }
@@ -370,7 +310,7 @@ class VsCodeExtension {
           if (error) {
             const configError = createConfigError.providerConnnectionFailed();
             configError.error = error instanceof Error ? error.message : String(error);
-            this.state.mutateConfigErrors((draft) => {
+            this.state.mutate((draft) => {
               draft.configErrors.push(configError);
             });
           }
@@ -411,7 +351,7 @@ class VsCodeExtension {
               this.state.logger.info("Model provider updated with Hub LLM proxy");
 
               // Clear GenAI/provider-related config errors
-              this.state.mutateConfigErrors((draft) => {
+              this.state.mutate((draft) => {
                 draft.configErrors = draft.configErrors.filter(
                   (e) =>
                     e.type !== "provider-not-configured" &&
@@ -445,14 +385,14 @@ class VsCodeExtension {
       await this.state.hubConnectionManager.initialize(hubConfig).catch((error) => {
         this.state.logger.error("Error initializing Hub connection", error);
         hubInitError = error;
-        this.state.mutateServerState((draft) => {
+        this.state.mutate((draft) => {
           draft.solutionServerConnected = false;
           draft.profileSyncConnected = false;
         });
       });
 
       // Update connection state based on initialization result
-      this.state.mutateServerState((draft) => {
+      this.state.mutate((draft) => {
         draft.solutionServerConnected = this.state.hubConnectionManager.isSolutionServerConnected();
         draft.profileSyncConnected = this.state.hubConnectionManager.isProfileSyncConnected();
 
@@ -494,7 +434,7 @@ class VsCodeExtension {
           const currentHubConfig = this.state.data.hubConfig;
           if (!currentHubConfig?.enabled || !currentHubConfig?.features.solutionServer.enabled) {
             // Pause; config change handlers will resume when re-enabled
-            this.state.mutateServerState((draft) => {
+            this.state.mutate((draft) => {
               draft.solutionServerConnected = false;
             });
             return;
@@ -520,13 +460,13 @@ class VsCodeExtension {
             pollInterval = 10000;
 
             // If we get here, connection is working
-            this.state.mutateServerState((draft) => {
+            this.state.mutate((draft) => {
               draft.solutionServerConnected = true;
             });
           } catch {
             consecutiveFailures++;
             // If we can't get capabilities, assume disconnected
-            this.state.mutateServerState((draft) => {
+            this.state.mutate((draft) => {
               draft.solutionServerConnected = false;
             });
 
@@ -627,7 +567,7 @@ class VsCodeExtension {
         vscode.workspace.onDidSaveTextDocument(async (doc) => {
           if (doc.uri.fsPath === paths().settingsYaml.fsPath) {
             const configError = await this.setupModelProvider(paths().settingsYaml);
-            this.state.mutateConfigErrors((draft) => {
+            this.state.mutate((draft) => {
               // Clear all config errors and re-validate
               draft.configErrors = [];
               if (configError) {
@@ -649,7 +589,7 @@ class VsCodeExtension {
           ) {
             this.setupModelProvider(paths().settingsYaml)
               .then((configError) => {
-                this.state.mutateConfigErrors((draft) => {
+                this.state.mutate((draft) => {
                   // Clear all GenAI-related config errors
                   draft.configErrors = draft.configErrors.filter(
                     (e) =>
@@ -666,7 +606,7 @@ class VsCodeExtension {
               })
               .catch((error: Error) => {
                 this.state.logger.error("Error setting up model provider:", error);
-                this.state.mutateConfigErrors((draft) => {
+                this.state.mutate((draft) => {
                   // Clear all GenAI-related config errors
                   draft.configErrors = draft.configErrors.filter(
                     (e) =>
@@ -685,7 +625,7 @@ class VsCodeExtension {
 
           if (event.affectsConfiguration(`${EXTENSION_NAME}.genai.agentMode`)) {
             const agentMode = getConfigAgentMode();
-            this.state.mutateSettings((draft) => {
+            this.state.mutate((draft) => {
               draft.isAgentMode = agentMode;
             });
           }
@@ -836,20 +776,15 @@ class VsCodeExtension {
       // 4. Wire up events → Zustand store → sync bridges → webview
       gooseClient.on("stateChange", (agentState: string) => {
         this.state.logger.info(`Goose agent state: ${agentState}`);
-        // Broadcast state to webview providers
-        for (const provider of this.state.webviewProviders.values()) {
-          provider.sendMessageToWebview({
-            type: MessageTypes.GOOSE_STATE_UPDATE,
-            state: agentState,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        this.state.mutate((draft) => {
+          draft.gooseState = agentState as GooseAgentState;
+        });
       });
 
       gooseClient.on("streamingChunk", (messageId: string, content: string) => {
         for (const provider of this.state.webviewProviders.values()) {
           provider.sendMessageToWebview({
-            type: MessageTypes.GOOSE_CHAT_STREAMING,
+            type: MessageTypes.GOOSE_CHAT_STREAMING_UPDATE,
             messageId,
             content,
             done: false,
@@ -861,7 +796,7 @@ class VsCodeExtension {
       gooseClient.on("streamingComplete", (messageId: string, stopReason: string) => {
         for (const provider of this.state.webviewProviders.values()) {
           provider.sendMessageToWebview({
-            type: MessageTypes.GOOSE_CHAT_STREAMING,
+            type: MessageTypes.GOOSE_CHAT_STREAMING_UPDATE,
             messageId,
             content: "",
             done: true,
@@ -872,14 +807,10 @@ class VsCodeExtension {
 
       gooseClient.on("error", (error: Error) => {
         this.state.logger.error(`Goose error: ${error.message}`);
-        for (const provider of this.state.webviewProviders.values()) {
-          provider.sendMessageToWebview({
-            type: MessageTypes.GOOSE_STATE_UPDATE,
-            state: "error",
-            error: error.message,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        this.state.mutate((draft) => {
+          draft.gooseState = "error";
+          draft.gooseError = error.message;
+        });
       });
 
       this.state.gooseClient = gooseClient;
@@ -1087,7 +1018,7 @@ class VsCodeExtension {
         activeStillExists?.id ?? (allProfiles.length > 0 ? allProfiles[0].id : null);
 
       // Update profiles first
-      this.state.mutateProfiles((draft) => {
+      this.state.mutate((draft) => {
         draft.profiles = allProfiles;
         draft.activeProfileId = newActiveId;
       });
@@ -1098,7 +1029,7 @@ class VsCodeExtension {
       }
 
       // Then update configuration errors
-      this.state.mutateConfigErrors((draft) => {
+      this.state.mutate((draft) => {
         this.updateConfigurationErrors(draft);
       });
 
@@ -1119,7 +1050,7 @@ class VsCodeExtension {
 
   private checkContinueInstalled(): void {
     const continueExt = vscode.extensions.getExtension("Continue.continue");
-    this.state.mutateSettings((draft) => {
+    this.state.mutate((draft) => {
       draft.isContinueInstalled = !!continueExt;
     });
   }
@@ -1156,7 +1087,7 @@ class VsCodeExtension {
         this.state.modelProvider = await this.createHubProxyModelProvider(llmProxyConfig);
 
         // Clear GenAI/provider-related config errors now that we're using the Hub proxy
-        this.state.mutateConfigErrors((draft) => {
+        this.state.mutate((draft) => {
           draft.configErrors = draft.configErrors.filter(
             (e) =>
               e.type !== "provider-not-configured" &&
@@ -1224,13 +1155,13 @@ class VsCodeExtension {
       this.state.logger.info("About to run getModelProviderFromConfig", {
         hadPreviousProvider,
         demoMode: getConfigKaiDemoMode(),
-        cacheDir: getCacheDir(this.data.workspaceRoot),
+        cacheDir: getCacheDir(this.store.getState().workspaceRoot),
       });
       this.state.modelProvider = await getModelProviderFromConfig(
         modelConfig,
         this.state.logger,
-        getConfigKaiDemoMode() ? getCacheDir(this.data.workspaceRoot) : undefined,
-        getTraceEnabled() ? getTraceDir(this.data.workspaceRoot) : undefined,
+        getConfigKaiDemoMode() ? getCacheDir(this.store.getState().workspaceRoot) : undefined,
+        getTraceEnabled() ? getTraceDir(this.store.getState().workspaceRoot) : undefined,
       );
 
       // Dispose workflow if we're changing an existing provider and not currently fetching
@@ -1326,8 +1257,12 @@ class VsCodeExtension {
     });
 
     // Set up cache and tracer directories
-    const cacheDir = getConfigKaiDemoMode() ? getCacheDir(this.data.workspaceRoot) : undefined;
-    const traceDir = getTraceEnabled() ? getTraceDir(this.data.workspaceRoot) : undefined;
+    const cacheDir = getConfigKaiDemoMode()
+      ? getCacheDir(this.store.getState().workspaceRoot)
+      : undefined;
+    const traceDir = getTraceEnabled()
+      ? getTraceDir(this.store.getState().workspaceRoot)
+      : undefined;
 
     const subDir = (dir: string): string =>
       pathlib.join(dir, "hub-proxy", modelName.replace(/[^a-zA-Z0-9_-]/g, "_"));
@@ -1377,7 +1312,7 @@ class VsCodeExtension {
   public async dispose() {
     // Clean up pending interactions and resolver function to prevent memory leaks
     this.state.resolvePendingInteraction = undefined;
-    this.state.mutateSolutionWorkflow((draft) => {
+    this.state.mutate((draft) => {
       draft.isWaitingForUserInteraction = false;
     });
 
@@ -1399,7 +1334,7 @@ class VsCodeExtension {
     });
 
     // Update state to reflect disconnected status
-    this.state.mutateServerState((draft) => {
+    this.state.mutate((draft) => {
       draft.solutionServerConnected = false;
     });
 

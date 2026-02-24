@@ -167,6 +167,8 @@ export interface ExtensionData {
   isSyncingProfiles: boolean;
   llmProxyAvailable: boolean;
   isWebEnvironment: boolean;
+  gooseState: GooseAgentState;
+  gooseError: string | undefined;
 }
 
 export type ConfigErrorType =
