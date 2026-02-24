@@ -1,4 +1,5 @@
 import { Logger } from "winston";
+import { setGlobalDispatcher } from "undici";
 import { ChatOllama } from "@langchain/ollama";
 import { ChatDeepSeek } from "@langchain/deepseek";
 import { AzureChatOpenAI, ChatOpenAI } from "@langchain/openai";
@@ -28,9 +29,7 @@ class AzureChatOpenAICreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getConfigHttpProtocol();
-    const allowH2 = httpProtocol === "http2";
-    const fetchFn = await getFetchFn(env, this.logger, allowH2);
+    const fetchFn = await setupProviderTLS(env, this.logger);
     return new AzureChatOpenAI({
       openAIApiKey: env.AZURE_OPENAI_API_KEY,
       ...args,
@@ -68,13 +67,12 @@ class ChatBedrockCreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getConfigHttpProtocol();
+    await setupProviderTLS(env, this.logger);
 
     const config: ChatBedrockConverseInput = {
       ...args,
       region: env.AWS_DEFAULT_REGION,
     };
-    // aws credentials can be specified globally using a credentials file
     if (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY) {
       config.credentials = {
         accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -82,6 +80,7 @@ class ChatBedrockCreator implements ModelCreator {
       };
     }
 
+    const httpProtocol = getConfigHttpProtocol();
     const httpVersion = httpProtocol === "http2" ? "2.0" : "1.1";
     const requestHandler = await getNodeHttpHandler(env, this.logger, httpVersion);
     const runtimeClient = new BedrockRuntimeClient({
@@ -110,9 +109,7 @@ class ChatDeepSeekCreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getConfigHttpProtocol();
-    const allowH2 = httpProtocol === "http2";
-    const fetchFn = await getFetchFn(env, this.logger, allowH2);
+    const fetchFn = await setupProviderTLS(env, this.logger);
     return new ChatDeepSeek({
       apiKey: env.DEEPSEEK_API_KEY,
       ...args,
@@ -142,6 +139,7 @@ class ChatGoogleGenerativeAICreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
+    await setupProviderTLS(env, this.logger);
     return new ChatGoogleGenerativeAI({
       apiKey: env.GOOGLE_API_KEY,
       ...args,
@@ -166,9 +164,7 @@ class ChatOllamaCreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getConfigHttpProtocol();
-    const allowH2 = httpProtocol === "http2";
-    const fetchFn = await getFetchFn(env, this.logger, allowH2);
+    const fetchFn = await setupProviderTLS(env, this.logger);
     return new ChatOllama({
       ...args,
       ...(fetchFn ? { fetch: fetchFn } : {}),
@@ -191,9 +187,7 @@ class ChatOpenAICreator implements ModelCreator {
   constructor(private readonly logger: Logger) {}
 
   async create(args: Record<string, any>, env: Record<string, string>): Promise<BaseChatModel> {
-    const httpProtocol = getConfigHttpProtocol();
-    const allowH2 = httpProtocol === "http2";
-    const fetchFn = await getFetchFn(env, this.logger, allowH2);
+    const fetchFn = await setupProviderTLS(env, this.logger);
     return new ChatOpenAI({
       apiKey: env.OPENAI_API_KEY,
       ...args,
@@ -247,23 +241,34 @@ function getCaBundleAndInsecure(env: Record<string, string>): {
   return { caBundle, insecure };
 }
 
-async function getFetchFn(
+/**
+ * Unified TLS setup for all model providers. Creates a single dispatcher that:
+ * 1. Sets the global fetch dispatcher (for SDKs like Google GenAI that use
+ *    global fetch internally and don't accept a custom fetch function)
+ * 2. Returns a custom fetch function (for SDKs like OpenAI/Azure that accept one)
+ *
+ * Every provider calls this same function, so new providers automatically get
+ * CA_BUNDLE, ALLOW_INSECURE, and HTTP protocol support.
+ */
+async function setupProviderTLS(
   env: Record<string, string>,
   logger: Logger,
-  allowH2: boolean = false,
 ): Promise<FetchFn | undefined> {
+  const httpProtocol = getConfigHttpProtocol();
+  const allowH2 = httpProtocol === "http2";
   const { caBundle, insecure } = getCaBundleAndInsecure(env);
   const needsCustomDispatcher = caBundle || insecure || !allowH2;
 
-  if (needsCustomDispatcher) {
-    try {
-      const dispatcher = await getDispatcherWithCertBundle(caBundle, insecure, allowH2, logger);
-      return getFetchWithDispatcher(dispatcher);
-    } catch (error) {
-      logger.error(error);
-      throw new Error(`Failed to setup dispatcher: ${String(error)}`);
-    }
+  if (!needsCustomDispatcher) {
+    return undefined;
   }
 
-  return undefined;
+  try {
+    const dispatcher = await getDispatcherWithCertBundle(caBundle, insecure, allowH2, logger);
+    setGlobalDispatcher(dispatcher as any);
+    return getFetchWithDispatcher(dispatcher);
+  } catch (error) {
+    logger.error(error);
+    throw new Error(`Failed to setup TLS dispatcher: ${String(error)}`);
+  }
 }
