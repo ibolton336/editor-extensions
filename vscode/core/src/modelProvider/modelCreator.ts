@@ -1,5 +1,5 @@
 import { Logger } from "winston";
-import { setGlobalDispatcher } from "undici";
+import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { ChatOllama } from "@langchain/ollama";
 import { ChatDeepSeek } from "@langchain/deepseek";
 import { AzureChatOpenAI, ChatOpenAI } from "@langchain/openai";
@@ -15,6 +15,8 @@ import {
 } from "../utilities/tls";
 import { ModelCreator, PROVIDER_ENV_CA_BUNDLE, PROVIDER_ENV_INSECURE, type FetchFn } from "./types";
 import { getConfigHttpProtocol } from "../utilities/httpProtocol";
+
+const defaultDispatcher = getGlobalDispatcher();
 
 export const ModelCreators: Record<string, (logger: Logger) => ModelCreator> = {
   AzureChatOpenAI: (logger) => new AzureChatOpenAICreator(logger),
@@ -260,6 +262,7 @@ async function setupProviderTLS(
   const needsCustomDispatcher = caBundle || insecure || !allowH2;
 
   if (!needsCustomDispatcher) {
+    setGlobalDispatcher(defaultDispatcher);
     return undefined;
   }
 

@@ -250,7 +250,8 @@ describe("model health check test", () => {
       openaiConfig.env.CA_BUNDLE = "";
       const modelCreator = ModelCreators[openaiConfig.config.provider](logger);
       const modelProvider = await modelCreator.create(openaiConfig.config.args, openaiConfig.env);
-      await withTimeout(modelProvider.invoke("Hello, world!"), 5000); // if the response is hanging for 5 seconds, connecton is not established
+      await withTimeout(modelProvider.invoke("Hello, world!"), 5000);
+      throw new Error("Expected connection to fail without CA_BUNDLE, but it succeeded");
     } catch (error) {
       expect(error).toBeDefined();
     }
@@ -292,6 +293,7 @@ describe("model health check test", () => {
       const modelCreator = ModelCreators[googleConfig.config.provider](logger);
       const modelProvider = await modelCreator.create(googleConfig.config.args, googleConfig.env);
       await withTimeout(modelProvider.invoke("Hello, world!"), 5000);
+      throw new Error("Expected connection to fail without CA_BUNDLE, but it succeeded");
     } catch (error) {
       expect(error).toBeDefined();
     }
