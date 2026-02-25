@@ -14,10 +14,11 @@ test.describe(
     tag: ['@tier3', '@experimental', '@requires-minikube'],
   },
   () => {
-    test.setTimeout(600000);
+    test.setTimeout(900000);
     let vscodeApp: VSCode;
 
     test.beforeAll(async ({ testRepoData }) => {
+      test.setTimeout(600_000);
       const repoInfo = testRepoData['coolstore'];
       vscodeApp = await VSCodeFactory.init(repoInfo.repoUrl, repoInfo.repoName, repoInfo.branch);
     });

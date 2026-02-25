@@ -19,6 +19,7 @@ test.describe(
      * This test assumes an analysis profile named "Coolstore" exists in the hub
      */
     test.beforeAll(async ({ testRepoData }) => {
+      test.setTimeout(600_000);
       const repoInfo = testRepoData['coolstore'];
       vscodeApp = await VSCodeFactory.init(repoInfo.repoUrl, repoInfo.repoName, repoInfo.branch);
       // Create a local profile before enabling profile sync

@@ -19,7 +19,11 @@ function getRepoData(repoName: string): RepoData {
 
 function getRepoUrl(repoName: string): string {
   const repoData = getRepoData(repoName);
-  return repoData.repoUrl ?? process.env.TEST_REPO_URL ?? 'https://github.com/konveyor-ecosystem/coolstore';
+  return (
+    repoData.repoUrl ??
+    process.env.TEST_REPO_URL ??
+    'https://github.com/konveyor-ecosystem/coolstore'
+  );
 }
 
 function getRepoLanguage(repoName: string): string {
@@ -34,7 +38,7 @@ function needsJavaInitialization(language: string): boolean {
 
 async function globalSetup() {
   // Removes the browser's context if the test are running in VSCode Web
-  if (process.env.WEB && existsSync('./web-state.json')) {
+  if (process.env.WEB_ENV && existsSync('./web-state.json')) {
     fs.rmSync('./web-state.json');
   }
   const repoName = process.env.TEST_REPO_NAME ?? 'coolstore';
@@ -44,14 +48,18 @@ async function globalSetup() {
   console.log(`Running global setup... (language: ${language}, Java init: ${isJava})`);
 
   // Install extensions from VSIX if provided (VSCode Desktop only, not on devspaces)
-  if ((process.env.CORE_VSIX_FILE_PATH || process.env.CORE_VSIX_DOWNLOAD_URL) && !process.env.WEB) {
+  console.log(process.env.WEB_ENV);
+  if (
+    (process.env.CORE_VSIX_FILE_PATH || process.env.CORE_VSIX_DOWNLOAD_URL) &&
+    !process.env.WEB_ENV
+  ) {
     await installExtension();
   }
 
   // Verify C# tools if running C# tests
   // Check both language and CSHARP_VSIX_FILE_PATH to catch C# tests
   const isCSharpTest = language === 'csharp' || !!process.env.CSHARP_VSIX_FILE_PATH;
-  if (isCSharpTest && !process.env.WEB) {
+  if (isCSharpTest && !process.env.WEB_ENV) {
     await verifyCSharpTools();
   }
 

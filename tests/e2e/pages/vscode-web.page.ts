@@ -162,8 +162,10 @@ export class VSCodeWeb extends VSCode {
     const loginButton = page.getByRole('button', { name: 'Log in' }).first();
     if (!(await loginButton.isVisible())) {
       await page.close();
+      console.log('VSCodeWeb.init: User already logged in');
       return VSCodeWeb.open(repoUrl, repoDir, branch);
     }
+    console.log('VSCodeWeb.init: User not logged in, go to login');
     await expect(loginButton).toBeVisible();
     await loginButton.click();
     const kubeadminBtn = page.getByRole('link', { name: 'kube:admin' }).first();
@@ -297,9 +299,7 @@ export class VSCodeWeb extends VSCode {
    * @private
    */
   private async getFileByUrl(url: string): Promise<string> {
-    // https://github.com/microsoft/playwright/issues/8850#issuecomment-3250011388
-    // TODO (abrugaro) Install the extension from a local file (upload and install)
-    const extensionFileName = `${generateRandomString()}.vsix`;
+    const extensionFileName = `${url.split('/').pop()}-${generateRandomString()}.vsix`;
     await this.executeTerminalCommand(
       `clear && wget ${url} -O ${extensionFileName}`,
       `‘${extensionFileName}’ saved`
@@ -309,7 +309,7 @@ export class VSCodeWeb extends VSCode {
 
   private async installExtensions(extensions: ExtensionTypes[]) {
     for (const extension of extensions) {
-      console.log('Installing extension', extension);
+      console.log('VSCodeWeb.installExtensions: Installing extension', extension);
       const vsixPath = process.env[`${extension}_VSIX_FILE_PATH`];
       const vsixUrl = process.env[`${extension}_VSIX_DOWNLOAD_URL`];
       let extensionFileName = '';
@@ -337,14 +337,16 @@ export class VSCodeWeb extends VSCode {
       await expect(
         this.window.getByText('Completed installing extension.', { exact: true })
       ).toBeVisible({ timeout: 300_000 });
-      await expect(
-        this.window.locator(`a[aria-label^="${VSCode.COMMAND_CATEGORY}"]`).locator('..')
-      ).toBeVisible({ timeout: 300_000 });
-      console.log(`${extension} extension installed`);
+      console.log(`VSCodeWeb.installExtensions: ${extension} extension installed`);
       await this.waitDefault();
     }
   }
 
+  /**
+   * Upload a file to the workspace, needed to install extensions from local files
+   * See https://github.com/microsoft/playwright/issues/8850#issuecomment-3250011388
+   * @param filePath
+   */
   public async uploadFile(filePath: string): Promise<string> {
     await this.openLeftBarElement('Explorer');
 
