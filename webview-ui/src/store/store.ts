@@ -411,6 +411,7 @@ export const useExtensionStore = create<ExtensionStore>()(
               content: "",
               timestamp: new Date().toISOString(),
               isStreaming: true,
+              isThinking: true,
               contentBlocks: [],
             };
             state.gooseMessages.push(msg);
@@ -421,6 +422,9 @@ export const useExtensionStore = create<ExtensionStore>()(
           const blockType = contentType ?? "text";
 
           if (blockType === "text" && content) {
+            if (msg.isThinking) {
+              msg.isThinking = false;
+            }
             msg.content += content;
           } else if (blockType === "resource_link" && resourceData?.uri) {
             if (!msg.contentBlocks) {
