@@ -17,6 +17,7 @@ import { ModelCreator, PROVIDER_ENV_CA_BUNDLE, PROVIDER_ENV_INSECURE, type Fetch
 import { getConfigHttpProtocol } from "../utilities/httpProtocol";
 
 const defaultDispatcher = getGlobalDispatcher();
+const originalFetch = globalThis.fetch;
 
 export const ModelCreators: Record<string, (logger: Logger) => ModelCreator> = {
   AzureChatOpenAI: (logger) => new AzureChatOpenAICreator(logger),
@@ -263,13 +264,16 @@ async function setupProviderTLS(
 
   if (!needsCustomDispatcher) {
     setGlobalDispatcher(defaultDispatcher);
+    globalThis.fetch = originalFetch;
     return undefined;
   }
 
   try {
     const dispatcher = await getDispatcherWithCertBundle(caBundle, insecure, allowH2);
+    const customFetch = getFetchWithDispatcher(dispatcher);
     setGlobalDispatcher(dispatcher as any);
-    return getFetchWithDispatcher(dispatcher);
+    globalThis.fetch = customFetch as typeof globalThis.fetch;
+    return customFetch;
   } catch (error) {
     logger.error(error);
     throw new Error(`Failed to setup TLS dispatcher: ${String(error)}`);
