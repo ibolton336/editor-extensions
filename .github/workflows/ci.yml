@@ -405,20 +405,48 @@ jobs:
           echo "Found VSIX files:"
           find ./artifacts -name "*.vsix" -ls
 
+          # Find each extension VSIX based on MTA naming convention
+          CORE_VSIX=$(ls ./artifacts/mta-core-*.vsix 2>/dev/null | head -n 1)
+          JAVA_VSIX=$(ls ./artifacts/mta-java-*.vsix 2>/dev/null | head -n 1)
+          JS_VSIX=$(ls ./artifacts/mta-javascript-*.vsix 2>/dev/null | head -n 1)
+          GO_VSIX=$(ls ./artifacts/mta-go-*.vsix 2>/dev/null | head -n 1)
+          CSHARP_VSIX=$(ls ./artifacts/mta-csharp-*.vsix 2>/dev/null | head -n 1)
+
+          # Verify and output
+          for vsix in "$CORE_VSIX" "$JAVA_VSIX" "$JS_VSIX" "$GO_VSIX" "$CSHARP_VSIX"; do
+            [ ! -f "$vsix" ] && echo "Error: VSIX not found: $vsix" && exit 1
+          done
+
+          echo "core_vsix=${CORE_VSIX}" >> $GITHUB_OUTPUT
+          echo "java_vsix=${JAVA_VSIX}" >> $GITHUB_OUTPUT
+          echo "javascript_vsix=${JS_VSIX}" >> $GITHUB_OUTPUT
+          echo "go_vsix=${GO_VSIX}" >> $GITHUB_OUTPUT
+          echo "csharp_vsix=${CSHARP_VSIX}" >> $GITHUB_OUTPUT
+
       - name: Run e2e tests (Linux)
         run: npx playwright test e2e/tests/base/configure-and-run-analysis.test.ts
         working-directory: ./.upstream-workspace/tests
         env:
+          __TEST_EXTENSION_END_TO_END__: "true"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          VSIX_FILE_PATH: ${{ github.workspace }}/artifacts
+          CORE_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.core_vsix }}
+          JAVA_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.java_vsix }}
+          JAVASCRIPT_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.javascript_vsix }}
+          GO_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.go_vsix }}
+          CSHARP_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.csharp_vsix }}
 
       # This is intentionally kept in a separate step to avoid passing in credentials
       - name: Run e2e tests (Linux - Offline)
         run: npx playwright test e2e/tests/agent_flow_coolstore.test.ts
         working-directory: ./.upstream-workspace/tests
         env:
-          VSIX_FILE_PATH: ${{ github.workspace }}/artifacts
+          __TEST_EXTENSION_END_TO_END__: "true"
           OPENAI_API_KEY: <dummy> # this only exists to pass provider validation
+          CORE_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.core_vsix }}
+          JAVA_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.java_vsix }}
+          JAVASCRIPT_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.javascript_vsix }}
+          GO_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.go_vsix }}
+          CSHARP_VSIX_FILE_PATH: ${{ github.workspace }}/${{ steps.set_vsix_paths.outputs.csharp_vsix }}
 
   publish-development:
     name: Publish Development Build

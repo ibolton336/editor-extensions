@@ -377,6 +377,24 @@ async function generateFallbackAssets(pkg) {
     "win32-arm64": "windows-mta-analyzer-rpc",
   };
 
+  // Generate static fallback assets based on known URL patterns
+  // Used when server is unreachable at build time (e.g., VPN required)
+  // The extension will verify availability at runtime
+  function generateStaticFallbackAssets() {
+    // Extract base version from URL (e.g., "8.1.0" from "MTA-8.1.0.CR2")
+    // The analyzer binaries use only the base version, not the release suffix
+    const versionMatch = FALLBACK_ASSETS_URL.match(/MTA-(\d+\.\d+\.\d+)/);
+    const version = versionMatch ? versionMatch[1] : "8.1.0";
+
+    const assets = {};
+    for (const [vscodePlatform, mtaPlatform] of Object.entries(PLATFORM_MAPPING)) {
+      const binaryName = PLATFORM_BINARY_NAMES[vscodePlatform];
+      const file = `mta-${version}-analyzer-rpc-${mtaPlatform}.zip`;
+      assets[vscodePlatform] = { file, binaryName };
+    }
+    return assets;
+  }
+
   try {
     console.log(`    Fetching from: ${FALLBACK_ASSETS_URL}`);
 
@@ -391,8 +409,16 @@ async function generateFallbackAssets(pkg) {
     } catch (sha256Error) {
       if (isPreRelease) {
         console.warn(`    ⚠️  Failed to fetch SHA256SUM: ${sha256Error.message}`);
-        console.warn("    ⚠️  Pre-release build: skipping fallback assets (server unreachable)");
-        console.warn("    📦 Assets are bundled, so runtime downloads are not required");
+        console.warn("    ⚠️  Server unreachable (VPN required) - using static fallback config");
+
+        const assets = generateStaticFallbackAssets();
+        pkg.fallbackAssets = {
+          baseUrl: FALLBACK_ASSETS_URL,
+          sha256sumFile: "SHA256SUM",
+          assets,
+        };
+        console.log(`  ✅ Generated static fallback assets for ${Object.keys(assets).length} platforms`);
+        console.log("  📦 Extension will attempt to download assets at runtime");
         return pkg;
       }
       console.error(`    ❌ Failed to fetch SHA256SUM: ${sha256Error.message}`);
@@ -469,8 +495,16 @@ async function generateFallbackAssets(pkg) {
   } catch (error) {
     if (isPreRelease) {
       console.warn(`  ⚠️  Failed to generate fallback assets: ${error.message}`);
-      console.warn("  ⚠️  Pre-release build: skipping fallback assets (server unreachable)");
-      console.warn("  📦 Assets are bundled, so runtime downloads are not required");
+      console.warn("  ⚠️  Server unreachable (VPN required) - using static fallback config");
+
+      const assets = generateStaticFallbackAssets();
+      pkg.fallbackAssets = {
+        baseUrl: FALLBACK_ASSETS_URL,
+        sha256sumFile: "SHA256SUM",
+        assets,
+      };
+      console.log(`  ✅ Generated static fallback assets for ${Object.keys(assets).length} platforms`);
+      console.log("  📦 Extension will attempt to download assets at runtime");
       return pkg;
     }
     console.error(`  ❌ Failed to generate fallback assets: ${error.message}`);
@@ -488,12 +522,22 @@ async function generateFallbackAssets(pkg) {
 function copyBrandingAssets() {
   console.log("🖼️  Copying branding assets...");
 
-  // 1. Sidebar icon → core extension
+  // 1. Sidebar icon → all extensions
   const iconSource = path.join(__dirname, "..", "assets/branding/sidebar-icons/icon.png");
-  const iconTarget = path.join(__dirname, "..", "vscode/core/resources/icon.png");
+  const iconTargets = [
+    "vscode/core/resources/icon.png",
+    "vscode/java/resources/icon.png",
+    "vscode/javascript/resources/icon.png",
+    "vscode/go/resources/icon.png",
+    "vscode/csharp/resources/icon.png",
+  ];
+
   if (fs.existsSync(iconSource)) {
-    fs.copyFileSync(iconSource, iconTarget);
-    console.log("  ✅ VSCode sidebar icon copied to core extension");
+    for (const target of iconTargets) {
+      const iconTarget = path.join(__dirname, "..", target);
+      fs.copyFileSync(iconSource, iconTarget);
+    }
+    console.log(`  ✅ VSCode sidebar icon copied to ${iconTargets.length} extensions`);
   } else {
     console.warn("  ⚠️  No sidebar icon found at: assets/branding/sidebar-icons/icon.png");
   }
