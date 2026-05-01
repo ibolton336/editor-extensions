@@ -1,4 +1,4 @@
-import { MessageTypes } from "@editor-extensions/shared";
+import { MessageTypes, AgentMessageTypes } from "@editor-extensions/shared";
 import { KonveyorGUIWebviewViewProvider } from "../KonveyorGUIWebviewViewProvider";
 import { type ExtensionStore } from "./extensionStore";
 import * as vscode from "vscode";
@@ -237,6 +237,36 @@ export function setupSyncBridges(
         previousChatMessages = chatMessages;
       },
       { equalityFn: (a, b) => a === b },
+    ),
+  );
+
+  // --- Agent state bridge ---
+  // Watches agentState and agentError, sends a self-contained AGENT_STATE_CHANGE message.
+  // Keeps all agent messaging outside of the core STATE_CHANGE channel.
+  unsubscribers.push(
+    store.subscribe(
+      (s) => ({
+        agentState: s.featureState?.agentState,
+        agentError: s.featureState?.agentError,
+      }),
+      (current, previous) => {
+        if (
+          current.agentState === previous.agentState &&
+          current.agentError === previous.agentError
+        ) {
+          return;
+        }
+
+        broadcast(getProviders, {
+          type: AgentMessageTypes.AGENT_STATE_CHANGE,
+          agentState: current.agentState,
+          agentError: current.agentError,
+          timestamp: new Date().toISOString(),
+        });
+      },
+      {
+        equalityFn: (a, b) => a.agentState === b.agentState && a.agentError === b.agentError,
+      },
     ),
   );
 

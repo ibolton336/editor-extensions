@@ -10,6 +10,7 @@ import {
   PendingBatchReviewFile,
   HubConfig,
 } from "./types";
+import type { AgentWebviewMessage } from "./agentMessages";
 
 export const MessageTypes = {
   // Core state
@@ -115,7 +116,8 @@ export type WebviewMessage =
   | StateChangeMessage
   | FocusViolationMessage
   | ChatStateChangeMessage
-  | ChatStreamingUpdateMessage;
+  | ChatStreamingUpdateMessage
+  | AgentWebviewMessage;
 
 /**
  * Type guards for message discrimination
