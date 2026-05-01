@@ -50,7 +50,7 @@ export class GoExternalProviderManager implements vscode.Disposable {
     });
 
     // Spawn the provider process
-    this.process = spawn(binaryPath, ["-name", "go", "-socket", this.providerSocketPath], {
+    this.process = spawn(binaryPath, ["-name", "generic", "-socket", this.providerSocketPath], {
       cwd: path.dirname(binaryPath),
     });
 
@@ -100,7 +100,8 @@ export class GoExternalProviderManager implements vscode.Disposable {
       "../../downloaded_assets/go-external-provider";
 
     const platformArch = `${platform}-${arch}`;
-    const binaryName = platform === "win32" ? "go-external-provider.exe" : "go-external-provider";
+    const binaryName =
+      platform === "win32" ? "go-external-provider.exe" : "go-external-provider";
 
     const binaryPath = this.context.asAbsolutePath(
       path.join(baseAssetPath, platformArch, binaryName),
