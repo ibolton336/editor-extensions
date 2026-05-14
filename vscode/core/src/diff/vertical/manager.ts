@@ -19,6 +19,9 @@ export interface VerticalDiffCodeLens {
 export class VerticalDiffManager {
   public refreshCodeLens: () => void = () => {};
   public onDiffStatusChange: ((fileUri: string) => void) | undefined;
+  public onAllBlocksResolved:
+    | ((streamId: string, fileUri: string, fileContent: string) => void)
+    | undefined;
 
   private fileUriToHandler: Map<string, VerticalDiffHandler> = new Map();
   fileUriToCodeLens: Map<string, VerticalDiffCodeLens[]> = new Map();
@@ -323,26 +326,14 @@ export class VerticalDiffManager {
       return;
     }
 
-    // Get the streamId for this file to clear activeDecorators
+    // Clean up streamId mapping (but do NOT clear activeDecorators here —
+    // the batch review webview uses activeDecorators to determine if a diff
+    // is still in-progress. Clearing it here races with pendingBatchReview
+    // removal and causes buttons to flash. activeDecorators is only cleared
+    // in clearForClosedTab for the tab-close case.)
     const streamId = this.fileUriToStreamId.get(fileUri);
     if (streamId) {
-      this.mutateDecorators((draft) => {
-        if (draft.activeDecorators && draft.activeDecorators[streamId]) {
-          delete draft.activeDecorators[streamId];
-          this.logger.info(
-            `[Manager] Cleared activeDecorators for streamId: ${streamId} via clearForFileUri`,
-          );
-          this.logger.info(`[Manager] Remaining activeDecorators:`, draft.activeDecorators);
-        } else {
-          this.logger.warn(
-            `[Manager] No activeDecorators found for streamId: ${streamId}, current:`,
-            draft.activeDecorators,
-          );
-        }
-      });
       this.fileUriToStreamId.delete(fileUri);
-    } else {
-      this.logger.warn(`[Manager] No streamId found for fileUri: ${fileUri} in clearForFileUri`);
     }
 
     const handler = this.fileUriToHandler.get(fileUri);
@@ -412,19 +403,20 @@ export class VerticalDiffManager {
           }
         }
 
-        // Clear activeDecorators when all decorators are resolved
+        // Do NOT clear activeDecorators here — it races with
+        // pendingBatchReview removal and causes the webview to flash
+        // "Accept/Reject/Review" buttons. Decorator cleanup is handled:
+        //  - Tab close: clearForClosedTab clears it
+        //  - Accept/reject: batch removal makes the entry irrelevant
         if ((status === "closed" || numDiffs === 0) && streamId) {
-          this.mutateDecorators((draft) => {
-            if (draft.activeDecorators && draft.activeDecorators[streamId]) {
-              delete draft.activeDecorators[streamId];
-            }
-          });
-          this.logger.debug(`[Manager] Cleared activeDecorators for streamId: ${streamId}`);
-
           // Auto-save the document when all decorators are resolved
-          // This provides the same behavior as "Apply All Changes" but for manual decoration clearing
           if (status === "closed" && fileContent) {
             this.autoSaveDocument(fileUri, fileContent);
+          }
+
+          // Notify that all blocks are resolved (for batch review advancement)
+          if (status === "closed" && fileContent && this.onAllBlocksResolved) {
+            this.onAllBlocksResolved(streamId, fileUri, fileContent);
           }
         }
       },
