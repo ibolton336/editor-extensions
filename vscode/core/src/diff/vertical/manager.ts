@@ -20,12 +20,13 @@ export class VerticalDiffManager {
   public refreshCodeLens: () => void = () => {};
   public onDiffStatusChange: ((fileUri: string) => void) | undefined;
   public onAllBlocksResolved:
-    | ((streamId: string, fileUri: string, fileContent: string) => void)
+    | ((streamId: string, fileUri: string, fileContent: string, accepted: boolean) => void)
     | undefined;
 
   private fileUriToHandler: Map<string, VerticalDiffHandler> = new Map();
   fileUriToCodeLens: Map<string, VerticalDiffCodeLens[]> = new Map();
   private fileUriToStreamId: Map<string, string> = new Map();
+  private _lastBlockAccepted = true;
 
   private userChangeListener: vscode.Disposable | undefined;
   private tabCloseListener: vscode.Disposable | undefined;
@@ -220,10 +221,14 @@ export class VerticalDiffManager {
       return;
     }
 
+    // Track whether this resolution was accept or reject so the
+    // onStatusUpdate → onAllBlocksResolved callback can propagate it.
+    this._lastBlockAccepted = accept;
+
     await handler.acceptRejectBlock(accept, block.start, block.numGreen, block.numRed);
 
     if (blocks.length === 1) {
-      await this.clearForFileUri(fileUri, true);
+      await this.clearForFileUri(fileUri, accept);
     } else {
       // Re-enable listener for user changes to file
       this.enableDocumentChangeListener();
@@ -416,7 +421,9 @@ export class VerticalDiffManager {
 
           // Notify that all blocks are resolved (for batch review advancement)
           if (status === "closed" && fileContent && this.onAllBlocksResolved) {
-            this.onAllBlocksResolved(streamId, fileUri, fileContent);
+            // accepted is tracked by the manager via acceptRejectVerticalDiffBlock;
+            // the last resolution's accept flag is stored transiently.
+            this.onAllBlocksResolved(streamId, fileUri, fileContent, this._lastBlockAccepted);
           }
         }
       },
