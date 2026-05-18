@@ -24,3 +24,5 @@ export {
   OIDCAuthCodeStateError,
 } from "./OIDCAuthCodeFlow";
 export { OIDCTokenStorage } from "./OIDCTokenStorage";
+export { HubStatusBarItem } from "./HubStatusBarItem";
+export type { HubConnectionStatus } from "./HubStatusBarItem";

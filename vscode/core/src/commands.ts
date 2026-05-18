@@ -311,8 +311,7 @@ const commandsMap: (
         const success = await state.hubConnectionManager.triggerOIDCLogin();
         if (success) {
           window.showInformationMessage("Successfully signed in to Hub");
-          // Reconnect features with new auth
-          await state.hubConnectionManager.connect();
+          // triggerOIDCLogin() already calls connect() internally, so just update state
           state.mutateServerState((draft) => {
             draft.solutionServerConnected = state.hubConnectionManager.isSolutionServerConnected();
             draft.profileSyncConnected = state.hubConnectionManager.isProfileSyncConnected();

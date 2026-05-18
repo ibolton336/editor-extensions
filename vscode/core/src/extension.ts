@@ -25,7 +25,7 @@ import {
   FileBasedResponseCache,
   type KaiModelProvider,
 } from "@editor-extensions/agentic";
-import { HubConnectionManager } from "./hub";
+import { HubConnectionManager, HubStatusBarItem } from "./hub";
 import { Immutable, produce } from "immer";
 import { registerAnalysisTrigger } from "./analysis";
 import { IssuesModel, registerIssueView } from "./issueView";
@@ -77,6 +77,7 @@ class VsCodeExtension {
   readonly onDidChangeData = this._onDidChange.event;
   private listeners: vscode.Disposable[] = [];
   private diffStatusBarItem: vscode.StatusBarItem;
+  private hubStatusBar: HubStatusBarItem;
 
   constructor(
     public readonly paths: ExtensionPaths,
@@ -89,6 +90,8 @@ class VsCodeExtension {
       vscode.StatusBarAlignment.Right,
       100,
     );
+    this.hubStatusBar = new HubStatusBarItem();
+    context.subscriptions.push(this.hubStatusBar);
     const isWebEnvironment = vscode.env.uiKind === vscode.UIKind.Web;
 
     this.data = produce(
@@ -553,6 +556,11 @@ class VsCodeExtension {
 
       this.context.subscriptions.push(this.diffStatusBarItem);
       this.checkContinueInstalled();
+
+      // Set up Hub status bar callback
+      this.state.hubConnectionManager.setStatusChangeCallback((status, username) => {
+        this.hubStatusBar.update(status, username);
+      });
 
       // Set up workflow disposal callback for when Hub clients reconnect
       // This handles both solution server changes and LLM proxy availability

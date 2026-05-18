@@ -97,6 +97,9 @@ export class HubConnectionManager {
   // Connection-scoped fetch for insecure Hub connections
   private scopedFetch: typeof fetch | null = null;
 
+  // Status change callback for UI updates (e.g., status bar)
+  private onStatusChange?: (status: "disconnected" | "connecting" | "authenticated" | "error", username?: string) => void;
+
   constructor(defaultConfig: HubConfig, logger: Logger) {
     this.config = defaultConfig;
     this.logger = logger.child({
@@ -117,6 +120,13 @@ export class HubConnectionManager {
    */
   public setWorkflowDisposalCallback(callback: WorkflowDisposalCallback): void {
     this.onWorkflowDisposal = callback;
+  }
+
+  /**
+   * Set status change callback for UI updates (e.g., status bar indicator).
+   */
+  public setStatusChangeCallback(cb: (status: "disconnected" | "connecting" | "authenticated" | "error", username?: string) => void): void {
+    this.onStatusChange = cb;
   }
 
   /**
@@ -284,8 +294,11 @@ export class HubConnectionManager {
 
     if (!this.config.enabled) {
       this.logger.info("Hub is disabled, skipping connection");
+      this.onStatusChange?.("disconnected");
       return;
     }
+
+    this.onStatusChange?.("connecting");
 
     this.logger.info("Connecting to Hub...", {
       url: sanitizeUrl(this.config.url),
@@ -335,6 +348,7 @@ export class HubConnectionManager {
           );
         }
 
+        this.onStatusChange?.("error");
         return; // Can't proceed without auth
       }
     }
@@ -361,6 +375,7 @@ export class HubConnectionManager {
         );
       }
 
+      this.onStatusChange?.("error");
       return; // Can't proceed if we can't connect to Hub
     }
 
@@ -416,6 +431,9 @@ export class HubConnectionManager {
 
     // Notify workflow disposal callback after successful connection
     this.onWorkflowDisposal?.(false);
+
+    // Notify status change — connection successful
+    this.onStatusChange?.("authenticated");
   }
 
   /**
@@ -457,6 +475,7 @@ export class HubConnectionManager {
     }
 
     this.logger.info("Disconnected from Hub");
+    this.onStatusChange?.("disconnected");
   }
 
   /**
@@ -516,6 +535,7 @@ export class HubConnectionManager {
     this.tokenExpiresAt = null;
     this.refreshToken = null;
     this.logger.info("OIDC tokens cleared");
+    this.onStatusChange?.("disconnected");
   }
 
   // ─── Private: Authentication ─────────────────────────────────────────────
