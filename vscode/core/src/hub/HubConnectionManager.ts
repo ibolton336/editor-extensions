@@ -4,6 +4,15 @@ import { SolutionServerClient } from "@editor-extensions/agentic";
 import { ProfileSyncClient, type LLMProxyConfig } from "../clients/ProfileSyncClient";
 import * as vscode from "vscode";
 import { executeExtensionCommand } from "../commands";
+import { getDispatcherWithCertBundle, getFetchWithDispatcher } from "../utilities/tls";
+import {
+  classifyNetworkError,
+  classifyHttpStatus,
+  sanitizeUrl,
+} from "../utilities/networkDiagnostics";
+import { OIDCDeviceFlowAuth, OIDCTokens } from "./OIDCDeviceFlowAuth";
+import { OIDCAuthCodeFlow } from "./OIDCAuthCodeFlow";
+import { OIDCTokenStorage } from "./OIDCTokenStorage";
 
 export interface TokenResponse {
   access_token: string;
@@ -20,8 +29,11 @@ export interface HubLoginResponse {
   expiry?: number; // Seconds until expiry (NOT Unix timestamp)
 }
 
+/** Authentication method for Hub connection. */
+export type HubAuthMethod = "oidc" | "oidc-auth-code" | "credentials";
+
 // Callback type for workflow disposal (called after successful connection)
-export type WorkflowDisposalCallback = () => void;
+export type WorkflowDisposalCallback = (tokenRefreshOnly?: boolean) => void;
 
 // Callback type for profile sync (to trigger automatic sync)
 export type ProfileSyncCallback = () => Promise<void>;
@@ -30,16 +42,24 @@ const TOKEN_EXPIRY_BUFFER_MS = 30000; // 30 second buffer
 const REAUTH_DELAY_MS = 5000; // Delay before re-authentication attempt
 const PROFILE_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const TOKEN_EXCHANGE_TIMEOUT_MS = 30000; // 30 second timeout for token exchange
+const DEFAULT_OIDC_CLIENT_ID = "kai-ide";
 
 export class HubConnectionManagerError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "HubConnectionManagerError";
   }
 }
 
 /**
  * Manages Hub connection, authentication, and client lifecycle.
+ *
+ * Supports three authentication methods:
+ * - **OIDC Auth Code + PKCE** (default): Uses authorization code flow with PKCE.
+ *   Opens browser for auth, catches callback via VS Code URI handler.
+ * - **OIDC Device Flow**: Uses RFC 8628 device authorization grant.
+ *   Fallback when device_code grant is available on the client.
+ * - **Credentials** (legacy): Username/password via /hub/auth/login endpoint.
  */
 export class HubConnectionManager {
   private config: HubConfig;
@@ -56,6 +76,17 @@ export class HubConnectionManager {
   private username: string = "";
   private password: string = "";
 
+  // OIDC Auth Code Flow state (primary)
+  private oidcAuthCode: OIDCAuthCodeFlow | null = null;
+
+  // OIDC Device Flow state (fallback)
+  private oidcAuth: OIDCDeviceFlowAuth | null = null;
+
+  // Shared OIDC state
+  private oidcIssuerUrl: string | null = null;
+  private oidcTokenStorage: OIDCTokenStorage | null = null;
+  private extensionContext: vscode.ExtensionContext | null = null;
+
   // Token refresh retry state
   private isRefreshingTokens: boolean = false;
   private refreshRetryCount: number = 0;
@@ -63,8 +94,8 @@ export class HubConnectionManager {
   // Profile sync state
   private profileSyncTimer: NodeJS.Timeout | null = null;
 
-  // SSL bypass cleanup
-  private sslBypassCleanup: (() => void) | null = null;
+  // Connection-scoped fetch for insecure Hub connections
+  private scopedFetch: typeof fetch | null = null;
 
   constructor(defaultConfig: HubConfig, logger: Logger) {
     this.config = defaultConfig;
@@ -74,10 +105,32 @@ export class HubConnectionManager {
   }
 
   /**
+   * Set VS Code extension context (needed for OIDC SecretStorage and URI handler).
+   * Must be called before initialize() if using OIDC auth.
+   */
+  public setExtensionContext(context: vscode.ExtensionContext): void {
+    this.extensionContext = context;
+  }
+
+  /**
    * Set workflow disposal callback
    */
   public setWorkflowDisposalCallback(callback: WorkflowDisposalCallback): void {
     this.onWorkflowDisposal = callback;
+  }
+
+  /**
+   * Get the current authentication method based on config.
+   * Defaults to "oidc-auth-code" (authorization code + PKCE flow).
+   */
+  public getAuthMethod(): HubAuthMethod {
+    const method = this.config.auth.method;
+    if (method === "credentials") {
+      return "credentials";
+    }
+    // Default to auth code flow. "oidc" in config means auth-code primary,
+    // device flow as fallback.
+    return "oidc-auth-code";
   }
 
   /**
@@ -93,6 +146,7 @@ export class HubConnectionManager {
 
     this.logger.info("Hub connection manager initialized", {
       enabled: config.enabled,
+      authMethod: this.getAuthMethod(),
       solutionServerEnabled: config.features.solutionServer.enabled,
       solutionServerConnected: this.isSolutionServerConnected(),
       profileSyncEnabled: config.features.profileSync.enabled,
@@ -112,6 +166,7 @@ export class HubConnectionManager {
     this.logger.info("Hub configuration updated", {
       enabled: config.enabled,
       wasEnabled,
+      authMethod: this.getAuthMethod(),
     });
 
     await this.connect();
@@ -160,6 +215,22 @@ export class HubConnectionManager {
   }
 
   /**
+   * Get the connection-scoped fetch function for Hub TLS configuration.
+   * Returns the custom fetch if insecure mode is enabled, otherwise undefined.
+   * Used to propagate Hub TLS settings to LLM proxy model providers.
+   */
+  public getScopedFetch(): typeof fetch | undefined {
+    return this.scopedFetch ?? undefined;
+  }
+
+  /**
+   * Check if authentication is enabled in the Hub configuration
+   */
+  public isAuthEnabled(): boolean {
+    return this.config.auth.enabled ?? false;
+  }
+
+  /**
    * Check if solution server is connected
    */
   public isSolutionServerConnected(): boolean {
@@ -184,6 +255,20 @@ export class HubConnectionManager {
     if (!this.config.auth.enabled) {
       return true;
     }
+
+    const method = this.getAuthMethod();
+
+    // Auth Code flow: check via the auth client
+    if (method === "oidc-auth-code" && this.oidcAuthCode) {
+      return this.oidcAuthCode.isTokenValid();
+    }
+
+    // Device flow: check via the auth client
+    if (method === "oidc" && this.oidcAuth) {
+      return this.oidcAuth.isTokenValid();
+    }
+
+    // Credentials: check bearer token directly
     return !!this.bearerToken && (this.tokenExpiresAt ? this.tokenExpiresAt > Date.now() : false);
   }
 
@@ -203,51 +288,78 @@ export class HubConnectionManager {
     }
 
     this.logger.info("Connecting to Hub...", {
+      url: sanitizeUrl(this.config.url),
+      authEnabled: this.config.auth.enabled,
+      authMethod: this.getAuthMethod(),
+      insecure: this.config.auth.insecure,
+      hasCredentials: !!(this.username && this.password),
       solutionServerEnabled: this.config.features.solutionServer.enabled,
       profileSyncEnabled: this.config.features.profileSync.enabled,
     });
 
-    // Apply SSL bypass if needed
+    // Create connection-scoped fetch for insecure mode
     if (this.config.auth.insecure) {
-      this.sslBypassCleanup = this.applySSLBypass();
+      this.logger.warn("SSL certificate verification is disabled for Hub connections");
+      const dispatcher = await getDispatcherWithCertBundle(undefined, true);
+      this.scopedFetch = getFetchWithDispatcher(dispatcher);
+    } else {
+      this.scopedFetch = null;
     }
 
-    // Handle authentication
+    // Handle authentication (non-interactive: don't auto-open browser on startup)
     if (this.config.auth.enabled) {
       try {
-        await this.ensureAuthenticated();
+        await this.ensureAuthenticated(false);
         await this.startTokenRefreshTimer();
       } catch (error) {
-        this.logger.error("Authentication failed", error);
-
-        // Extract meaningful error message and show to user
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        vscode.window.showErrorMessage(
-          `Failed to authenticate with Hub: ${errorMessage}, check your username and password.`,
-        );
+        if (error instanceof HubConnectionManagerError) {
+          this.logger.error("Authentication failed", { error });
+          // Show actionable sign-in prompt instead of generic error
+          vscode.window
+            .showWarningMessage("Hub authentication required. Sign in to connect.", "Sign In")
+            .then((action) => {
+              if (action === "Sign In") {
+                executeExtensionCommand("hubOidcLogin");
+              }
+            });
+        } else {
+          const classified = classifyNetworkError(error);
+          this.logger.error("Authentication failed", {
+            category: classified.category,
+            summary: classified.summary,
+            suggestion: classified.suggestion,
+            error,
+          });
+          vscode.window.showErrorMessage(
+            `Failed to authenticate with Hub: ${classified.summary}. ${classified.suggestion}`,
+          );
+        }
 
         return; // Can't proceed without auth
       }
     }
 
     // Verify Hub connectivity and auth before connecting individual features
-    // This catches cases where auth is disabled in config but Hub requires it
     try {
       this.logger.info("Verifying Hub connectivity and authentication");
-      const testClient = new ProfileSyncClient(this.config.url, this.bearerToken, this.logger);
-      await testClient.connect();
-      await testClient.disconnect();
+      await this.verifyHubConnectivity();
       this.logger.info("Hub connectivity check passed");
     } catch (error) {
-      this.logger.error("Hub connectivity check failed", error);
-
-      // Extract meaningful error message
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      // Show specific error to user - this is a blocker for all features
-      vscode.window.showErrorMessage(
-        `Failed to connect to Hub: ${errorMessage}, check your URL and credentials.`,
-      );
+      if (error instanceof HubConnectionManagerError) {
+        this.logger.error("Hub connectivity check failed", { error });
+        vscode.window.showErrorMessage(`Failed to connect to Hub: ${error.message}`);
+      } else {
+        const classified = classifyNetworkError(error);
+        this.logger.error("Hub connectivity check failed", {
+          category: classified.category,
+          summary: classified.summary,
+          suggestion: classified.suggestion,
+          error,
+        });
+        vscode.window.showErrorMessage(
+          `Failed to connect to Hub: ${classified.summary}. ${classified.suggestion}`,
+        );
+      }
 
       return; // Can't proceed if we can't connect to Hub
     }
@@ -260,21 +372,16 @@ export class HubConnectionManager {
           this.config.url,
           this.bearerToken,
           this.logger,
+          this.scopedFetch ?? undefined,
         );
         await this.solutionServerClient.connect();
         this.logger.info("Successfully connected to Hub solution server");
         vscode.window.showInformationMessage("Successfully connected to Hub solution server");
       } catch (error) {
         this.logger.error("Failed to connect solution server client", error);
-
-        // Extract meaningful error message
         const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Show specific error to user
         vscode.window.showErrorMessage(`Failed to connect to Hub solution server: ${errorMessage}`);
-
         this.solutionServerClient = null;
-        // Continue - solution server is optional
       }
     }
 
@@ -286,37 +393,29 @@ export class HubConnectionManager {
           this.config.url,
           this.bearerToken,
           this.logger,
+          this.scopedFetch ?? undefined,
         );
         await this.profileSyncClient.connect();
         this.logger.info("Successfully connected to Hub profile sync");
         vscode.window.showInformationMessage("Successfully connected to Hub profile sync");
 
-        // Log LLM proxy status
         const llmProxyConfig = this.profileSyncClient.getLLMProxyConfig();
         if (llmProxyConfig) {
           this.logger.info("LLM proxy available", { endpoint: llmProxyConfig.endpoint });
         }
 
-        // Trigger initial sync and start timer
         this.triggerProfileSync();
         this.startProfileSyncTimer();
       } catch (error) {
         this.logger.error("Failed to connect profile sync client", error);
-
-        // Extract meaningful error message
         const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Show specific error to user
         vscode.window.showErrorMessage(`Failed to connect to Hub profile sync: ${errorMessage}`);
-
         this.profileSyncClient = null;
-        // Continue - profile sync is optional
       }
     }
 
     // Notify workflow disposal callback after successful connection
-    // This handles both workflow disposal and model provider updates
-    this.onWorkflowDisposal?.();
+    this.onWorkflowDisposal?.(false);
   }
 
   /**
@@ -330,7 +429,6 @@ export class HubConnectionManager {
 
     this.logger.info("Disconnecting from Hub...");
 
-    // Disconnect solution server
     if (this.solutionServerClient) {
       try {
         await this.solutionServerClient.disconnect();
@@ -340,7 +438,6 @@ export class HubConnectionManager {
       this.solutionServerClient = null;
     }
 
-    // Disconnect profile sync
     if (this.profileSyncClient) {
       try {
         await this.profileSyncClient.disconnect();
@@ -350,27 +447,78 @@ export class HubConnectionManager {
       this.profileSyncClient = null;
     }
 
-    // Only clear auth/timers/SSL if we're NOT in the middle of a token refresh
-    // During refresh, we want to keep the fresh tokens and reconnect with them
     if (!this.isRefreshingTokens) {
-      // Clear all timers
       this.clearTokenRefreshTimer();
       this.clearProfileSyncTimer();
-
-      // Clear auth tokens - important when switching to a different Hub
       this.bearerToken = null;
       this.refreshToken = null;
       this.tokenExpiresAt = null;
-
-      // Restore SSL settings
-      if (this.sslBypassCleanup) {
-        this.sslBypassCleanup();
-        this.sslBypassCleanup = null;
-      }
+      this.scopedFetch = null;
     }
 
     this.logger.info("Disconnected from Hub");
   }
+
+  /**
+   * Trigger OIDC login manually (e.g., from a command).
+   * Uses auth code flow (primary) or device flow (fallback) based on config.
+   */
+  public async triggerOIDCLogin(): Promise<boolean> {
+    const method = this.getAuthMethod();
+    if (method === "credentials") {
+      this.logger.warn("OIDC login triggered but auth method is credentials");
+      return false;
+    }
+
+    try {
+      await this.ensureOIDCInitialized();
+
+      let tokens: OIDCTokens;
+
+      if (this.oidcAuthCode) {
+        // Primary: auth code + PKCE (interactive — open browser)
+        tokens = await this.oidcAuthCode.authCodeLogin();
+      } else if (this.oidcAuth) {
+        // Fallback: device flow
+        tokens = await this.oidcAuth.deviceLogin();
+      } else {
+        return false;
+      }
+
+      await this.persistOIDCTokens(tokens);
+      this.bearerToken = tokens.accessToken;
+      this.tokenExpiresAt = tokens.expiresAt;
+
+      // After successful interactive login, reconnect to Hub
+      await this.connect();
+
+      return true;
+    } catch (error) {
+      this.logger.error("Manual OIDC login failed", { error });
+      return false;
+    }
+  }
+
+  /**
+   * Logout from OIDC (clear stored tokens).
+   */
+  public async oidcLogout(): Promise<void> {
+    if (this.oidcAuthCode) {
+      this.oidcAuthCode.clearTokens();
+    }
+    if (this.oidcAuth) {
+      this.oidcAuth.clearTokens();
+    }
+    if (this.oidcTokenStorage) {
+      await this.oidcTokenStorage.clear();
+    }
+    this.bearerToken = null;
+    this.tokenExpiresAt = null;
+    this.refreshToken = null;
+    this.logger.info("OIDC tokens cleared");
+  }
+
+  // ─── Private: Authentication ─────────────────────────────────────────────
 
   /**
    * Update stored credentials from config
@@ -389,34 +537,202 @@ export class HubConnectionManager {
   }
 
   /**
-   * Ensure we have a valid authentication token
+   * Ensure we have a valid authentication token.
+   * Dispatches to auth code, device flow, or credentials based on config.
+   * @param interactive - If true, allows opening browser for login. If false (startup),
+   *   will throw if no valid/refreshable tokens exist rather than opening the browser.
    */
-  private async ensureAuthenticated(): Promise<void> {
-    if (!this.username || !this.password) {
-      throw new HubConnectionManagerError(
-        "Authentication is enabled but credentials are not configured",
-      );
-    }
-
-    if (!this.hasValidAuth()) {
-      await this.exchangeForTokens();
+  private async ensureAuthenticated(interactive: boolean = false): Promise<void> {
+    const method = this.getAuthMethod();
+    if (method === "oidc-auth-code") {
+      await this.ensureAuthenticatedAuthCode(interactive);
+    } else if (method === "oidc") {
+      await this.ensureAuthenticatedOIDC();
+    } else {
+      await this.ensureAuthenticatedCredentials();
     }
   }
 
   /**
-   * Exchange credentials for tokens via Hub login endpoint.
-   * Uses /hub/auth/login instead of direct Keycloak to get tokens that work with the LLM proxy.
+   * Auth Code + PKCE authentication: restore from storage → try refresh → browser flow.
+   * @param interactive - If true, allows opening browser for login. If false (startup),
+   *   will throw if no valid/refreshable tokens exist rather than opening the browser.
    */
-  private async exchangeForTokens(): Promise<void> {
-    if (!this.username || !this.password) {
-      throw new HubConnectionManagerError("No username or password available for token exchange");
+  private async ensureAuthenticatedAuthCode(interactive: boolean = false): Promise<void> {
+    await this.ensureOIDCInitialized();
+
+    if (!this.oidcAuthCode || !this.oidcTokenStorage) {
+      throw new HubConnectionManagerError(
+        "OIDC Auth Code flow not initialized (missing ExtensionContext?)",
+      );
     }
 
-    const loginUrl = `${this.config.url}/hub/auth/login`;
+    // Step 1: Try to restore tokens from storage
+    const storedTokens = await this.oidcTokenStorage.retrieve();
+    if (storedTokens) {
+      this.oidcAuthCode.setTokens(storedTokens);
+      this.logger.info("Restored OIDC tokens from storage");
 
-    this.logger.debug(`Attempting token exchange with ${loginUrl}`);
+      // If token is still valid, use it directly
+      if (this.oidcAuthCode.isTokenValid()) {
+        this.bearerToken = storedTokens.accessToken;
+        this.tokenExpiresAt = storedTokens.expiresAt;
+        this.logger.info("Stored OIDC token is still valid");
+        return;
+      }
+    }
 
-    const loginResponse = await this.fetchWithTimeout<HubLoginResponse>(loginUrl, {
+    // Step 2: Try refresh
+    const refreshed = await this.oidcAuthCode.refresh();
+    if (refreshed) {
+      const tokens = this.oidcAuthCode.getTokens()!;
+      await this.persistOIDCTokens(tokens);
+      this.bearerToken = tokens.accessToken;
+      this.tokenExpiresAt = tokens.expiresAt;
+      this.logger.info("OIDC token refreshed successfully");
+      return;
+    }
+
+    // Step 3: If non-interactive (startup), don't open browser — throw to signal auth needed
+    if (!interactive) {
+      this.logger.info("No valid tokens and non-interactive mode — sign-in required");
+      throw new HubConnectionManagerError(
+        "Authentication required. Please sign in to connect to Hub.",
+      );
+    }
+
+    // Step 4: Full auth code + PKCE flow (interactive only)
+    this.logger.info("Starting OIDC authorization code + PKCE flow");
+    const tokens = await this.oidcAuthCode.login();
+    await this.persistOIDCTokens(tokens);
+    this.bearerToken = tokens.accessToken;
+    this.tokenExpiresAt = tokens.expiresAt;
+    this.logger.info("OIDC auth code flow completed");
+  }
+
+  /**
+   * OIDC Device Flow authentication: restore from storage → try refresh → device flow.
+   */
+  private async ensureAuthenticatedOIDC(): Promise<void> {
+    await this.ensureOIDCInitialized();
+
+    if (!this.oidcAuth || !this.oidcTokenStorage) {
+      throw new HubConnectionManagerError("OIDC auth not initialized (missing ExtensionContext?)");
+    }
+
+    // Step 1: Try to restore tokens from storage
+    const storedTokens = await this.oidcTokenStorage.retrieve();
+    if (storedTokens) {
+      this.oidcAuth.setTokens(storedTokens);
+      this.logger.info("Restored OIDC tokens from storage");
+
+      if (this.oidcAuth.isTokenValid()) {
+        this.bearerToken = storedTokens.accessToken;
+        this.tokenExpiresAt = storedTokens.expiresAt;
+        this.logger.info("Stored OIDC token is still valid");
+        return;
+      }
+    }
+
+    // Step 2: Try refresh
+    const refreshed = await this.oidcAuth.refresh();
+    if (refreshed) {
+      const tokens = this.oidcAuth.getTokens()!;
+      await this.persistOIDCTokens(tokens);
+      this.bearerToken = tokens.accessToken;
+      this.tokenExpiresAt = tokens.expiresAt;
+      this.logger.info("OIDC token refreshed successfully");
+      return;
+    }
+
+    // Step 3: Full device flow login
+    this.logger.info("Starting OIDC device flow login");
+    const tokens = await this.oidcAuth.login();
+    await this.persistOIDCTokens(tokens);
+    this.bearerToken = tokens.accessToken;
+    this.tokenExpiresAt = tokens.expiresAt;
+    this.logger.info("OIDC device flow login completed");
+  }
+
+  /**
+   * Initialize OIDC auth clients and token storage if not already done.
+   */
+  private async ensureOIDCInitialized(): Promise<void> {
+    const expectedIssuerUrl = `${this.config.url}/oidc`;
+    if (
+      (this.oidcAuthCode || this.oidcAuth) &&
+      this.oidcTokenStorage &&
+      this.oidcIssuerUrl === expectedIssuerUrl
+    ) {
+      return;
+    }
+
+    if (!this.extensionContext) {
+      throw new HubConnectionManagerError(
+        "ExtensionContext required for OIDC auth. Call setExtensionContext() first.",
+      );
+    }
+
+    const clientId = this.config.auth.oidcClientId ?? DEFAULT_OIDC_CLIENT_ID;
+    const issuerUrl = `${this.config.url}/oidc`;
+
+    // Initialize Auth Code flow (primary)
+    this.oidcAuthCode = new OIDCAuthCodeFlow(
+      issuerUrl,
+      clientId,
+      undefined, // Use default redirect URI (vscode://konveyor.konveyor-core/auth)
+      this.scopedFetch ?? undefined,
+    );
+
+    // Register URI handler for catching auth callbacks
+    const uriHandlerDisposable = this.oidcAuthCode.registerUriHandler();
+    this.extensionContext.subscriptions.push(uriHandlerDisposable);
+
+    // Initialize Device Flow (fallback)
+    this.oidcAuth = new OIDCDeviceFlowAuth(issuerUrl, clientId, this.scopedFetch ?? undefined);
+
+    // Initialize token storage
+    this.oidcTokenStorage = new OIDCTokenStorage(this.extensionContext.secrets, this.config.url);
+
+    this.logger.info("OIDC auth initialized", {
+      clientId,
+      issuerUrl,
+      method: this.getAuthMethod(),
+    });
+
+    this.oidcIssuerUrl = issuerUrl;
+  }
+
+  /**
+   * Persist OIDC tokens to SecretStorage.
+   */
+  private async persistOIDCTokens(tokens: OIDCTokens): Promise<void> {
+    if (!this.oidcTokenStorage) {
+      return;
+    }
+    try {
+      await this.oidcTokenStorage.store(tokens);
+      this.logger.info("OIDC tokens persisted to storage");
+    } catch (error) {
+      this.logger.warn("Failed to persist OIDC tokens", { error });
+    }
+  }
+
+  /**
+   * Legacy credentials authentication via /hub/auth/login.
+   */
+  private async ensureAuthenticatedCredentials(): Promise<void> {
+    if (!this.username || !this.password) {
+      throw new HubConnectionManagerError(
+        "Authentication is enabled but username/password are not configured",
+      );
+    }
+
+    this.logger.info("Authenticating with Hub via credentials");
+
+    const fetchFn = this.scopedFetch ?? fetch;
+
+    const response = await fetchFn(`${this.config.url}/hub/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -428,200 +744,171 @@ export class HubConnectionManager {
       }),
     });
 
-    this.logger.info("Token exchange successful via Hub login");
-    this.bearerToken = loginResponse.token;
-    this.refreshToken = loginResponse.refresh ?? null; // Store refresh token if provided
-
-    // Get expiration from response or decode from JWT
-    if (loginResponse.expiry) {
-      // expiry is in SECONDS (not Unix timestamp), convert to milliseconds
-      this.tokenExpiresAt = Date.now() + loginResponse.expiry * 1000 - TOKEN_EXPIRY_BUFFER_MS;
-    } else {
-      this.tokenExpiresAt = this.getExpirationFromJWT(loginResponse.token);
+    if (!response.ok) {
+      const status = response.status;
+      const classified = classifyHttpStatus(status);
+      throw new HubConnectionManagerError(
+        `Login failed (${status}): ${classified.summary}. ${classified.suggestion}`,
+      );
     }
+
+    const data: HubLoginResponse = await response.json();
+    this.bearerToken = data.token;
+    this.refreshToken = data.refresh ?? null;
+
+    if (data.expiry) {
+      this.tokenExpiresAt = Date.now() + data.expiry * 1000;
+    }
+
+    this.logger.info("Credentials authentication successful");
   }
 
+  // ─── Private: Token Refresh ──────────────────────────────────────────────
+
   /**
-   * Refresh tokens using the refresh token via /hub/auth/refresh endpoint.
-   * This is more efficient than re-authenticating with credentials.
+   * Start a timer to refresh tokens before they expire.
    */
-  private async refreshWithRefreshToken(): Promise<void> {
-    if (!this.refreshToken) {
-      throw new HubConnectionManagerError("No refresh token available");
+  private async startTokenRefreshTimer(): Promise<void> {
+    this.clearTokenRefreshTimer();
+
+    let timeUntilRefresh: number = 0;
+
+    if (this.getAuthMethod() === "oidc-auth-code" && this.oidcAuthCode) {
+      timeUntilRefresh = this.oidcAuthCode.getTimeUntilRefresh();
+    } else if (this.oidcAuth) {
+      timeUntilRefresh = this.oidcAuth.getTimeUntilRefresh();
+    } else if (this.tokenExpiresAt) {
+      timeUntilRefresh = Math.max(0, this.tokenExpiresAt - TOKEN_EXPIRY_BUFFER_MS - Date.now());
     }
 
-    const refreshUrl = `${this.config.url}/hub/auth/refresh`;
-
-    this.logger.debug(`Attempting token refresh with ${refreshUrl}`);
-
-    const refreshResponse = await this.fetchWithTimeout<HubLoginResponse>(refreshUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        refresh: this.refreshToken,
-      }),
-    });
-
-    this.logger.info("Token refresh successful via Hub refresh endpoint");
-
-    // Update tokens
-    this.bearerToken = refreshResponse.token;
-    this.refreshToken = refreshResponse.refresh ?? this.refreshToken; // Use new refresh token if provided
-
-    // Get expiration from response or decode from JWT
-    if (refreshResponse.expiry) {
-      this.tokenExpiresAt = Date.now() + refreshResponse.expiry * 1000 - TOKEN_EXPIRY_BUFFER_MS;
-    } else {
-      this.tokenExpiresAt = this.getExpirationFromJWT(refreshResponse.token);
+    if (timeUntilRefresh > 0) {
+      this.logger.info(`Token refresh scheduled in ${Math.round(timeUntilRefresh / 1000)}s`);
+      this.refreshTimer = setTimeout(() => this.refreshTokens(), timeUntilRefresh);
+    } else if (this.bearerToken) {
+      // Token already needs refresh
+      this.logger.info("Token already expired or near expiry, refreshing now");
+      await this.refreshTokens();
     }
   }
 
   /**
-   * Extract expiration time from JWT token payload
-   */
-  private getExpirationFromJWT(token: string): number | null {
-    try {
-      const payload = token.split(".")[1];
-      const decoded = JSON.parse(Buffer.from(payload, "base64").toString());
-      if (decoded.exp) {
-        return decoded.exp * 1000 - TOKEN_EXPIRY_BUFFER_MS;
-      }
-    } catch {
-      this.logger.warn("Could not decode JWT expiration");
-    }
-    return null;
-  }
-
-  /**
-   * Refresh tokens using refresh token if available, otherwise re-authenticate.
+   * Refresh tokens using the appropriate flow.
    */
   private async refreshTokens(): Promise<void> {
-    if (this.isRefreshingTokens) {
-      this.logger.debug("Token refresh already in progress");
-      return;
-    }
-
-    this.clearTokenRefreshTimer();
     this.isRefreshingTokens = true;
 
     try {
-      // Try refresh token first (more efficient)
-      if (this.refreshToken) {
-        this.logger.debug("Attempting token refresh with refresh token");
-        try {
-          await this.refreshWithRefreshToken();
-          this.logger.info("Token refresh successful using refresh token");
-        } catch (refreshError) {
-          this.logger.warn("Refresh token failed, falling back to re-authentication", refreshError);
-          this.refreshToken = null; // Clear invalid refresh token
+      const method = this.getAuthMethod();
+      let refreshed = false;
 
-          // Fall back to re-authentication
-          if (!this.username || !this.password) {
-            throw new HubConnectionManagerError(
-              "Refresh token failed and no credentials available for re-authentication",
-            );
-          }
-          await this.exchangeForTokens();
-          this.logger.info("Re-authentication successful after refresh token failure");
+      if (method === "oidc-auth-code" && this.oidcAuthCode) {
+        refreshed = await this.oidcAuthCode.refresh();
+        if (refreshed) {
+          const tokens = this.oidcAuthCode.getTokens()!;
+          await this.persistOIDCTokens(tokens);
+          this.bearerToken = tokens.accessToken;
+          this.tokenExpiresAt = tokens.expiresAt;
         }
-      } else {
-        // No refresh token, re-authenticate
-        this.logger.debug("No refresh token available, re-authenticating with credentials");
-        if (!this.username || !this.password) {
-          throw new HubConnectionManagerError("No credentials available for token refresh");
+      } else if (method === "oidc" && this.oidcAuth) {
+        refreshed = await this.oidcAuth.refresh();
+        if (refreshed) {
+          const tokens = this.oidcAuth.getTokens()!;
+          await this.persistOIDCTokens(tokens);
+          this.bearerToken = tokens.accessToken;
+          this.tokenExpiresAt = tokens.expiresAt;
         }
-        await this.exchangeForTokens();
-        this.logger.info("Re-authentication successful");
+      } else if (method === "credentials" && this.refreshToken) {
+        refreshed = await this.refreshCredentialsToken();
       }
 
-      // Success - reconnect with new token
-      this.refreshRetryCount = 0;
-      await this.connect();
+      if (refreshed) {
+        this.logger.info("Token refreshed successfully");
+        this.refreshRetryCount = 0;
+        await this.startTokenRefreshTimer();
+
+        // Reconnect clients with new token
+        await this.connect();
+      } else {
+        this.logger.warn("Token refresh failed");
+        this.handleRefreshFailure();
+      }
     } catch (error) {
-      await this.handleTokenRefreshError(error);
+      this.logger.error("Token refresh error", { error });
+      this.handleRefreshFailure();
     } finally {
       this.isRefreshingTokens = false;
     }
   }
 
   /**
-   * Handle token refresh errors with retry logic
+   * Handle refresh failure — prompt for re-login or retry.
    */
-  private async handleTokenRefreshError(error: unknown): Promise<void> {
-    this.logger.error("Token refresh failed", error);
+  private handleRefreshFailure(): void {
+    this.refreshRetryCount++;
 
-    const maxRefreshRetries = 3;
-    const baseRetryDelayMs = 1000;
-    const isRetryable = this.isRetryableRefreshError(error);
-
-    if (isRetryable && this.refreshRetryCount < maxRefreshRetries) {
-      this.refreshRetryCount++;
-      const delayMs = baseRetryDelayMs * Math.pow(2, this.refreshRetryCount - 1);
-
-      this.logger.warn(
-        `Token refresh failed (attempt ${this.refreshRetryCount}/${maxRefreshRetries}), retrying in ${delayMs}ms`,
-      );
-
-      this.refreshTimer = setTimeout(() => {
-        this.refreshTokens().catch((err) => {
-          this.logger.error("Retry token refresh failed", err);
-        });
-      }, delayMs);
-    } else {
-      // Permanent failure - clear tokens and schedule reconnection attempt
-      this.refreshRetryCount = 0;
-      this.logger.error(
-        `Token refresh failed permanently: ${isRetryable ? "max retries exceeded" : "non-retryable error"}`,
-      );
-
-      this.bearerToken = null;
-      this.tokenExpiresAt = null;
-
-      if (this.username && this.password) {
-        this.logger.info(`Attempting re-authentication in ${REAUTH_DELAY_MS}ms`);
-        this.refreshTimer = setTimeout(() => {
-          this.connect().catch((err) => {
-            this.logger.error("Re-authentication failed", err);
+    if (this.refreshRetryCount >= 3) {
+      // After 3 retries, prompt user to re-authenticate
+      const method = this.getAuthMethod();
+      if (method === "oidc-auth-code" || method === "oidc") {
+        vscode.window
+          .showWarningMessage("Hub session expired. Please sign in again.", "Sign In")
+          .then((action) => {
+            if (action === "Sign In") {
+              this.triggerOIDCLogin();
+            }
           });
-        }, REAUTH_DELAY_MS);
+      } else {
+        vscode.window.showWarningMessage(
+          "Hub authentication expired. Please check your credentials.",
+        );
       }
+    } else {
+      // Retry after delay
+      this.refreshTimer = setTimeout(
+        () => this.refreshTokens(),
+        REAUTH_DELAY_MS * this.refreshRetryCount,
+      );
     }
   }
 
   /**
-   * Start automatic token refresh timer
+   * Refresh credentials-based token.
    */
-  private async startTokenRefreshTimer(): Promise<void> {
-    this.clearTokenRefreshTimer();
-
-    if (!this.tokenExpiresAt) {
-      this.logger.warn("No token expiration time available, cannot start refresh timer");
-      return;
+  private async refreshCredentialsToken(): Promise<boolean> {
+    if (!this.refreshToken) {
+      return false;
     }
 
-    const timeUntilRefresh = this.tokenExpiresAt - Date.now();
+    const fetchFn = this.scopedFetch ?? fetch;
 
-    if (timeUntilRefresh <= 0) {
-      await this.refreshTokens().catch((error) => {
-        this.logger.error("Immediate token refresh failed", error);
+    try {
+      const response = await fetchFn(`${this.config.url}/hub/auth/refresh`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ refresh: this.refreshToken }),
       });
-      return;
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data: HubLoginResponse = await response.json();
+      this.bearerToken = data.token;
+      if (data.refresh) {
+        this.refreshToken = data.refresh;
+      }
+      if (data.expiry) {
+        this.tokenExpiresAt = Date.now() + data.expiry * 1000;
+      }
+      return true;
+    } catch {
+      return false;
     }
-
-    this.logger.info(`Starting token refresh timer, will refresh in ${timeUntilRefresh}ms`);
-    this.refreshTimer = setTimeout(() => {
-      this.refreshTokens().catch((error) => {
-        this.logger.error("Token refresh timer failed", error);
-      });
-    }, timeUntilRefresh);
   }
 
-  /**
-   * Clear token refresh timer
-   */
   private clearTokenRefreshTimer(): void {
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
@@ -629,119 +916,88 @@ export class HubConnectionManager {
     }
   }
 
+  // ─── Private: Hub Connectivity Check ─────────────────────────────────────
+
   /**
-   * Check if a token refresh error is retryable
+   * Verify that we can reach the Hub and auth is working.
    */
-  private isRetryableRefreshError(error: unknown): boolean {
-    if (error instanceof HubConnectionManagerError) {
-      const message = error.message.toLowerCase();
-      if (
-        message.includes("400") ||
-        message.includes("401") ||
-        message.includes("invalid_grant") ||
-        message.includes("unauthorized")
-      ) {
-        return false;
-      }
+  private async verifyHubConnectivity(): Promise<void> {
+    const fetchFn = this.scopedFetch ?? fetch;
+    const headers: Record<string, string> = { Accept: "application/json" };
+
+    if (this.bearerToken) {
+      headers["Authorization"] = `Bearer ${this.bearerToken}`;
     }
-    return true;
+
+    // Use OIDC userinfo endpoint for OIDC auth (validates token + connectivity)
+    // Fall back to /hub for legacy credential auth
+    const method = this.getAuthMethod();
+    const checkUrl =
+      method === "oidc-auth-code" || method === "oidc"
+        ? `${this.config.url}/oidc/userinfo`
+        : `${this.config.url}/hub`;
+
+    try {
+      const response = await fetchFn(checkUrl, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
+      });
+
+      if (response.status === 401) {
+        throw new HubConnectionManagerError(
+          "Authentication required but token was rejected. Try signing in again.",
+        );
+      }
+
+      if (response.status === 403) {
+        throw new HubConnectionManagerError(
+          "Access denied. Your account may not have the required permissions.",
+        );
+      }
+
+      // Accept any 2xx or 3xx as success
+      if (response.status >= 400) {
+        throw new HubConnectionManagerError(`Hub returned unexpected status ${response.status}`);
+      }
+    } catch (error) {
+      if (error instanceof HubConnectionManagerError) {
+        throw error;
+      }
+      this.logger.error("Hub connectivity check failed", {
+        error,
+        checkUrl: sanitizeUrl(checkUrl),
+      });
+      throw error;
+    }
   }
 
-  /**
-   * Trigger profile sync via callback
-   */
+  // ─── Private: Profile Sync ───────────────────────────────────────────────
+
   private triggerProfileSync(): void {
-    executeExtensionCommand("syncHubProfiles", true);
+    if (!this.profileSyncClient?.isConnected) {
+      this.logger.debug("Profile sync client not connected, skipping sync");
+      return;
+    }
+
+    // Delegate to the syncHubProfiles command which has workspace/repo context
+    executeExtensionCommand("syncHubProfiles", true).then(
+      () => {},
+      (error: unknown) => {
+        this.logger.error("Profile sync failed", { error });
+      },
+    );
   }
 
-  /**
-   * Start automatic profile sync timer
-   */
   private startProfileSyncTimer(): void {
     this.clearProfileSyncTimer();
-
-    this.logger.info(
-      `Starting profile sync timer, will sync every ${PROFILE_SYNC_INTERVAL_MS / 1000}s`,
-    );
-
-    this.profileSyncTimer = setInterval(() => {
-      if (this.isRefreshingTokens) {
-        this.logger.debug("Skipping periodic profile sync - token refresh in progress");
-        return;
-      }
-      this.triggerProfileSync();
-    }, PROFILE_SYNC_INTERVAL_MS);
+    this.profileSyncTimer = setInterval(() => this.triggerProfileSync(), PROFILE_SYNC_INTERVAL_MS);
   }
 
-  /**
-   * Clear profile sync timer
-   */
   private clearProfileSyncTimer(): void {
     if (this.profileSyncTimer) {
       clearInterval(this.profileSyncTimer);
       this.profileSyncTimer = null;
     }
-  }
-
-  /**
-   * Fetch with timeout and error handling
-   */
-  private async fetchWithTimeout<T>(url: string, options: RequestInit): Promise<T> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TOKEN_EXCHANGE_TIMEOUT_MS);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(`Request failed: ${response.status} ${response.statusText}`, errorText);
-        throw new HubConnectionManagerError(
-          `Request failed: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      return (await response.json()) as T;
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new HubConnectionManagerError(
-          `Request timed out after ${TOKEN_EXCHANGE_TIMEOUT_MS / 1000} seconds`,
-        );
-      }
-
-      if (error instanceof HubConnectionManagerError) {
-        throw error;
-      }
-
-      throw new HubConnectionManagerError(
-        `Request failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  /**
-   * Apply SSL bypass for insecure connections
-   */
-  private applySSLBypass(): () => void {
-    this.logger.debug("Applying SSL bypass for insecure connections");
-    const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-    this.logger.warn("SSL certificate verification is disabled");
-
-    return () => {
-      this.logger.debug("Restoring SSL settings");
-      if (originalRejectUnauthorized !== undefined) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized;
-      } else {
-        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
-      }
-    };
   }
 }

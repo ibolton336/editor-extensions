@@ -5,7 +5,7 @@
   "author": "Konveyor",
   "icon": "resources/icon.png",
   "license": "Apache-2.0",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "main": "./out/extension.js",
   "publisher": "konveyor",
   "repository": {
@@ -36,7 +36,8 @@
   ],
   "activationEvents": [
     "onFileSystem:konveyorMemFs",
-    "onFileSystem:konveyorReadOnly"
+    "onFileSystem:konveyorReadOnly",
+    "onUri"
   ],
   "contributes": {
     "commands": [
@@ -193,6 +194,18 @@
         "icon": "$(sync)"
       },
       {
+        "command": "konveyor-core.hubOidcLogin",
+        "title": "Sign In to Hub (OIDC)",
+        "category": "Konveyor",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "konveyor-core.hubOidcLogout",
+        "title": "Sign Out from Hub",
+        "category": "Konveyor",
+        "icon": "$(sign-out)"
+      },
+      {
         "command": "konveyor-core.retryProfileSync",
         "title": "Retry Profile Sync Connection",
         "category": "Konveyor",
@@ -225,7 +238,18 @@
     "viewsWelcome": [
       {
         "view": "konveyor-core.issueView",
-        "contents": "Welcome to Konveyor! Get started with your migration analysis.\n[Open Analysis Panel](command:konveyor-core.showAnalysisPanel)\n[Manage Profiles](command:konveyor-core.openProfilesPanel)\nFor more information, see the [Konveyor documentation](https://konveyor.io/docs)."
+        "contents": "Konveyor requires a workspace folder to analyze your project. Open a folder containing your application code to get started.\n[Open Folder](command:vscode.openFolder)\nFor more information, see the [Konveyor documentation](https://konveyor.io/docs).",
+        "when": "workspaceFolderCount == 0"
+      },
+      {
+        "view": "konveyor-core.issueView",
+        "contents": "No analysis providers are registered. Install a Konveyor language extension to enable code analysis for your project.\nSupported languages: Java, Go, JavaScript, and C#.\n[Install Extension Pack](command:workbench.extensions.installExtension?%22konveyor.konveyor%22)\n[Browse Extensions](command:workbench.extensions.search?%22%40publisher%3Akonveyor%22)\nFor more information, see the [Konveyor documentation](https://konveyor.io/docs).",
+        "when": "workspaceFolderCount != 0 && !konveyor-core.hasProviders"
+      },
+      {
+        "view": "konveyor-core.issueView",
+        "contents": "Welcome to Konveyor! Get started with your migration analysis.\n[Open Analysis Panel](command:konveyor-core.showAnalysisPanel)\n[Manage Profiles](command:konveyor-core.openProfilesPanel)\nFor more information, see the [Konveyor documentation](https://konveyor.io/docs).",
+        "when": "workspaceFolderCount != 0 && konveyor-core.hasProviders"
       }
     ],
     "menus": {
@@ -405,6 +429,28 @@
           "description": "Enable debug logging for webview message handling",
           "scope": "window",
           "order": 40
+        },
+        "konveyor-core.hub.auth.method": {
+          "type": "string",
+          "enum": [
+            "oidc",
+            "credentials"
+          ],
+          "default": "oidc",
+          "enumDescriptions": [
+            "OIDC Authorization Code + PKCE - Sign in via browser (recommended)",
+            "Credentials - Username and password (legacy)"
+          ],
+          "description": "Authentication method for Hub connections. OIDC uses the hub's builtin OIDC provider with authorization code + PKCE flow (opens browser). Falls back to device flow when available. Credentials uses the legacy username/password login.",
+          "scope": "window",
+          "order": 50
+        },
+        "konveyor-core.hub.auth.oidcClientId": {
+          "type": "string",
+          "default": "kai-ide",
+          "description": "OIDC client ID for authentication. Must match a registered client on the hub.",
+          "scope": "window",
+          "order": 51
         }
       }
     },
@@ -436,14 +482,13 @@
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
-    "@types/diff": "^6.0.0",
     "@types/express": "^5.0.3",
     "@types/jsesc": "^3.0.3",
     "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.93.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
-    "copy-webpack-plugin": "^12.0.2",
+    "copy-webpack-plugin": "^14.0.0",
     "cross-env": "^10.1.0",
     "css-loader": "^7.1.2",
     "express": "^5.1.0",

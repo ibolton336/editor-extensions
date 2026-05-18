@@ -26,7 +26,12 @@ import {
   getTraceDir,
   fileUriToPath,
 } from "./utilities/configuration";
-import { EXTENSION_NAME, EXTENSION_SHORT_NAME } from "./utilities/constants";
+import { EXTENSION_NAME, EXTENSION_PUBLISHER, EXTENSION_SHORT_NAME } from "./utilities/constants";
+import {
+  getInstalledLanguageExtensions,
+  KNOWN_LANGUAGE_EXTENSIONS,
+  EXTENSION_PACK_ID,
+} from "./languageExtensions";
 import { runPartialAnalysis } from "./analysis";
 import { fixGroupOfIncidents, IncidentTypeItem } from "./issueView";
 import { paths } from "./paths";
@@ -40,9 +45,9 @@ import { runHealthCheck, formatHealthCheckReport } from "./healthCheck";
 import { getHealthCheckRegistry } from "./extension";
 import type { CheckStatus } from "./healthCheck/types";
 import { getRepositoryInfo } from "./utilities/git";
+import { getHubProfilesDir } from "./utilities/profiles/inTreeProfiles";
 
 const isWindows = process.platform === "win32";
-const PROFILES_DIR = ".konveyor/profiles";
 
 /**
  * Set profile files as read-only on disk to prevent manual edits
@@ -82,6 +87,17 @@ async function setProfileFilesReadOnly(syncDir: string, logger: Logger): Promise
 }
 
 /**
+ * Remove the hub-synced profiles directory.
+ * This directory is exclusively managed by the extension, so it is safe to delete
+ * without risk of destroying user-created profiles.
+ */
+export async function cleanupHubProfiles(workspaceRoot: string, logger: Logger): Promise<void> {
+  const hubDir = getHubProfilesDir(workspaceRoot);
+  await fs.rm(hubDir, { recursive: true, force: true });
+  logger.info("Cleaned up hub-synced profiles directory", { hubDir });
+}
+
+/**
  * Helper function to execute internal commands with proper extension prefix
  * Use this for all internal command executions to ensure they work with rebranding
  */
@@ -96,11 +112,36 @@ export function executeExtensionCommand(commandSuffix: string, ...args: any[]): 
 function checkProvidersRegistered(state: ExtensionState, logger: Logger): boolean {
   const providers = state.analyzerClient.getRegisteredProviders();
   if (providers.length === 0) {
-    const message =
-      "No language providers are registered yet. Please wait for language extensions " +
-      "(e.g., Konveyor Java) to finish loading before starting the analyzer.";
-    logger.warn(message);
-    vscode.window.showWarningMessage(message);
+    const installed = getInstalledLanguageExtensions();
+
+    if (installed.length === 0) {
+      const message =
+        "No language extensions are installed. " +
+        "Install language extensions to enable code analysis.";
+      logger.warn(message);
+      vscode.window
+        .showWarningMessage(message, "Install Extension Pack", "Browse Extensions")
+        .then((selection) => {
+          if (selection === "Install Extension Pack") {
+            vscode.commands.executeCommand(
+              "workbench.extensions.installExtension",
+              EXTENSION_PACK_ID,
+            );
+          } else if (selection === "Browse Extensions") {
+            vscode.commands.executeCommand(
+              "workbench.extensions.search",
+              `@publisher:${EXTENSION_PUBLISHER}`,
+            );
+          }
+        });
+    } else {
+      const installedNames = installed.map((e) => e.displayName).join(", ");
+      const message =
+        `Language extensions are still loading (${installedNames}). ` +
+        `Please wait for them to finish activating before starting the analyzer.`;
+      logger.warn(message);
+      vscode.window.showWarningMessage(message);
+    }
     return false;
   }
   return true;
@@ -158,6 +199,20 @@ const commandsMap: (
     },
     [`${EXTENSION_NAME}.stopServer`]: async () => {
       const analyzerClient = state.analyzerClient;
+      const { isAnalyzing, isAnalysisScheduled } = state.data;
+      const isScheduledAnalysisRunning =
+        state.batchedAnalysisTrigger?.isScheduledAnalysisRunning() ?? false;
+      if (isAnalyzing || isAnalysisScheduled || isScheduledAnalysisRunning) {
+        logger.warn("Stop server blocked because analysis is running or scheduled.", {
+          isAnalyzing,
+          isAnalysisScheduled,
+          isScheduledAnalysisRunning,
+        });
+        vscode.window.showWarningMessage(
+          "Cannot stop the server while analysis is running or scheduled.",
+        );
+        return;
+      }
       try {
         await analyzerClient.stop();
       } catch (e) {
@@ -248,6 +303,42 @@ const commandsMap: (
         state.mutateServerState((draft) => {
           draft.profileSyncConnected = false;
         });
+      }
+    },
+    [`${EXTENSION_NAME}.hubOidcLogin`]: async () => {
+      logger.info("Hub OIDC Login command triggered");
+      try {
+        const success = await state.hubConnectionManager.triggerOIDCLogin();
+        if (success) {
+          window.showInformationMessage("Successfully signed in to Hub");
+          // Reconnect features with new auth
+          await state.hubConnectionManager.connect();
+          state.mutateServerState((draft) => {
+            draft.solutionServerConnected = state.hubConnectionManager.isSolutionServerConnected();
+            draft.profileSyncConnected = state.hubConnectionManager.isProfileSyncConnected();
+            draft.llmProxyAvailable = state.hubConnectionManager.isLLMProxyConnected();
+          });
+        }
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        logger.error("OIDC login failed", { error: e });
+        window.showErrorMessage(`OIDC sign-in failed: ${errorMessage}`);
+      }
+    },
+    [`${EXTENSION_NAME}.hubOidcLogout`]: async () => {
+      logger.info("Hub OIDC Logout command triggered");
+      try {
+        await state.hubConnectionManager.oidcLogout();
+        window.showInformationMessage("Signed out from Hub");
+        state.mutateServerState((draft) => {
+          draft.solutionServerConnected = false;
+          draft.profileSyncConnected = false;
+          draft.llmProxyAvailable = false;
+        });
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        logger.error("OIDC logout failed", { error: e });
+        window.showErrorMessage(`Sign out failed: ${errorMessage}`);
       }
     },
     [`${EXTENSION_NAME}.runAnalysis`]: async () => {
@@ -373,7 +464,7 @@ const commandsMap: (
         // Execute the Continue command with prompt and range
         await commands.executeCommand(
           "continue.customQuickActionSendToChat",
-          `Help me address this Konveyor migration issue:\nRule: ${incident.ruleset_name} - ${incident.ruleset_description}\nViolation: ${incident.violation_name} - ${incident.violation_description}\nCategory: ${incident.violation_category}\nMessage: ${incident.message}`,
+          `Help me address this ${EXTENSION_SHORT_NAME} migration issue:\nRule: ${incident.ruleset_name} - ${incident.ruleset_description}\nViolation: ${incident.violation_name} - ${incident.violation_description}\nCategory: ${incident.violation_category}\nMessage: ${incident.message}`,
           new Range(
             new Position(startLine, 0),
             new Position(endLine, doc.lineAt(endLine).text.length),
@@ -482,7 +573,7 @@ const commandsMap: (
         title: "Enter the path where the debug archive will be saved",
         value: pathlib.join(
           ".vscode",
-          `konveyor-log-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`,
+          `${EXTENSION_NAME}-log-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`,
         ),
         ignoreFocusOut: true,
         placeHolder: "Enter the path where the debug archive will be saved",
@@ -587,9 +678,24 @@ const commandsMap: (
         );
       }
       // add logs and write zip
+      const LANGUAGE_EXTENSION_IDS = KNOWN_LANGUAGE_EXTENSIONS.map((ext) => ext.id);
       try {
         const zipArchive = new AdmZip();
-        zipArchive.addLocalFolder(fileUriToPath(state.extensionContext.logUri.fsPath), "logs"); // add logs folder
+        const coreLogPath = fileUriToPath(state.extensionContext.logUri.fsPath);
+        zipArchive.addLocalFolder(coreLogPath, "logs"); // add core extension logs
+        // add language extension logs from sibling directories
+        const parentLogDir = pathlib.dirname(coreLogPath);
+        for (const extId of LANGUAGE_EXTENSION_IDS) {
+          const extLogDir = pathlib.join(parentLogDir, extId);
+          try {
+            const stat = await fs.stat(extLogDir);
+            if (stat.isDirectory()) {
+              zipArchive.addLocalFolder(extLogDir, `logs/${extId}`);
+            }
+          } catch {
+            logger.debug(`Language extension log directory not found: ${extLogDir}`);
+          }
+        }
         if (traceDirFound && includeLLMTraces === "Yes") {
           zipArchive.addLocalFolder(traceDir as string, "traces");
         }
@@ -671,7 +777,9 @@ const commandsMap: (
         }
 
         // Determine sync directory (use file system path, not URI)
-        const syncDir = pathlib.join(workspaceRoot, PROFILES_DIR);
+        // Hub-synced profiles go to a dedicated directory we own,
+        // separate from user-managed in-tree profiles
+        const syncDir = getHubProfilesDir(workspaceRoot);
 
         logger.info("Syncing profiles", { repoInfo, syncDir });
         const result = await profileSyncClient.syncProfiles(repoInfo, syncDir);
@@ -704,7 +812,7 @@ const commandsMap: (
               `Synced ${result.profilesSynced}/${result.profilesFound} profiles from Hub`,
             );
           }
-          // Note: Profile watcher will automatically reload profiles from .konveyor/profiles/
+          // Note: Profile watcher will automatically reload profiles from .konveyor/hub-profiles/
         } else if (!result.success) {
           if (!silent) {
             window.showWarningMessage(`Profile sync failed: ${result.error}`);
@@ -1097,7 +1205,7 @@ export function registerAllCommands(state: ExtensionState) {
     const errorMessage = `Failed to create command map: ${error instanceof Error ? error.message : String(error)}`;
     logger.error(errorMessage, { error });
     window.showErrorMessage(
-      `Konveyor extension failed to initialize commands. The extension cannot function properly.`,
+      `${EXTENSION_SHORT_NAME} extension failed to initialize commands. The extension cannot function properly.`,
     );
     throw new Error(errorMessage);
   }
@@ -1108,7 +1216,7 @@ export function registerAllCommands(state: ExtensionState) {
     const errorMessage = `Command map is empty - no commands available to register`;
     logger.error(errorMessage);
     window.showErrorMessage(
-      `Konveyor extension has no commands to register. The extension cannot function properly.`,
+      `${EXTENSION_SHORT_NAME} extension has no commands to register. The extension cannot function properly.`,
     );
     throw new Error(errorMessage);
   }
