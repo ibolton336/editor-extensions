@@ -49,6 +49,7 @@ import { getHealthCheckRegistry } from "./extension";
 import type { CheckStatus } from "./healthCheck/types";
 import { getRepositoryInfo } from "./utilities/git";
 import { getHubProfilesDir } from "./utilities/profiles/inTreeProfiles";
+import { clusterAgentCommandsMap } from "./clusterAgent/commands";
 
 const isWindows = process.platform === "win32";
 
@@ -168,6 +169,7 @@ const commandsMap: (
   [command: string]: (...args: any) => any;
 } = (state, logger) => {
   return {
+    ...clusterAgentCommandsMap(state, logger),
     [`${EXTENSION_NAME}.openProfilesPanel`]: async () => {
       const provider = state.webviewProviders.get("profiles");
       if (provider) {

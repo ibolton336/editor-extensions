@@ -210,6 +210,21 @@
         "title": "Retry Profile Sync Connection",
         "category": "Konveyor",
         "icon": "$(debug-restart)"
+      },
+      {
+        "command": "konveyor-core.startClusterAgent",
+        "title": "Start Cluster Agent on This Workspace",
+        "category": "Konveyor"
+      },
+      {
+        "command": "konveyor-core.attachClusterAgent",
+        "title": "Attach to Running Cluster Agent",
+        "category": "Konveyor"
+      },
+      {
+        "command": "konveyor-core.disconnectClusterAgent",
+        "title": "Disconnect Cluster Agent",
+        "category": "Konveyor"
       }
     ],
     "submenus": [
@@ -451,6 +466,59 @@
           "description": "OIDC client ID for authentication. Must match a registered client on the hub.",
           "scope": "window",
           "order": 51
+        },
+        "konveyor-core.clusterAgent.namespace": {
+          "type": "string",
+          "default": "konveyor-agents",
+          "description": "Kubernetes namespace for konveyor.io AgentRun resources.",
+          "scope": "window"
+        },
+        "konveyor-core.clusterAgent.agentRef": {
+          "type": "string",
+          "default": "migration-analyzer",
+          "description": "Name of the Agent CR to execute for cluster agent sessions.",
+          "scope": "window"
+        },
+        "konveyor-core.clusterAgent.kubeconfig": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Path to a kubeconfig file. If not set, default loading rules apply (~/.kube/config, KUBECONFIG).",
+          "scope": "window"
+        },
+        "konveyor-core.clusterAgent.llmProvider": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "LLMProvider CR name for the run's primary model selection. Leave empty to use the Agent's defaults.",
+          "scope": "window"
+        },
+        "konveyor-core.clusterAgent.model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Model id (declared on the LLMProvider) for the run's primary model selection.",
+          "scope": "window"
+        },
+        "konveyor-core.clusterAgent.approvalMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "smart_approve"
+          ],
+          "default": "auto",
+          "enumDescriptions": [
+            "Agent runs unattended (GOOSE_MODE=auto); no permission prompts.",
+            "Write/execute tool calls pause for approval in the IDE (GOOSE_MODE=smart_approve)."
+          ],
+          "description": "Human-in-the-loop mode for cluster agent tool calls.",
+          "scope": "window"
         }
       }
     },
@@ -495,7 +563,8 @@
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.1",
     "webpack": "^5.94.0",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^5.1.4",
+    "@types/ws": "^8.18.0"
   },
   "dependencies": {
     "@editor-extensions/prompts": "*",
@@ -510,6 +579,9 @@
     "oauth4webapi": "^3.8.6",
     "undici": "^7.14.0",
     "winston": "^3.17.0",
-    "winston-transport-vscode": "^0.1.0"
+    "winston-transport-vscode": "^0.1.0",
+    "@agentclientprotocol/sdk": "^1.1.0",
+    "@kubernetes/client-node": "^1.4.0",
+    "ws": "^8.21.0"
   }
 }

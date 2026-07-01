@@ -87,6 +87,23 @@ export const getConfigAgentMode = (): boolean =>
   getConfigValue<boolean>("genai.agentMode") ?? false;
 export const getConfigAutoAcceptOnSave = (): boolean =>
   getConfigValue<boolean>("diff.autoAcceptOnSave") ?? false;
+
+// ─── Cluster agent (konveyor.io AgentRun) settings ───────────────────
+
+export const getConfigClusterAgentNamespace = (): string =>
+  getConfigValue<string>("clusterAgent.namespace") || "konveyor-agents";
+export const getConfigClusterAgentRef = (): string =>
+  getConfigValue<string>("clusterAgent.agentRef") || "migration-analyzer";
+export const getConfigClusterAgentKubeconfig = (): string | undefined =>
+  getConfigValue<string>("clusterAgent.kubeconfig") || undefined;
+export const getConfigClusterAgentProvider = (): string | undefined =>
+  getConfigValue<string>("clusterAgent.llmProvider") || undefined;
+export const getConfigClusterAgentModel = (): string | undefined =>
+  getConfigValue<string>("clusterAgent.model") || undefined;
+export const getConfigClusterAgentApprovalMode = (): "auto" | "smart_approve" =>
+  getConfigValue<string>("clusterAgent.approvalMode") === "smart_approve"
+    ? "smart_approve"
+    : "auto";
 export const getExcludedDiagnosticSources = (): string[] =>
   getConfigValue<string[]>("genai.excludedDiagnosticSources") ?? [];
 
