@@ -1,11 +1,12 @@
 /**
  * VSCode commands for cluster-hosted agents (konveyor.io AgentRuns).
  *
- * UX is deliberately native (output channel, input box, quick pick,
- * modal permission dialogs, status bar usage meter) so this feature is
- * independent of any chat webview work. When a unified chat AgentClient
- * lands (editor-extensions#1368), ClusterAcpSession becomes its cluster
- * transport and these commands keep working as the power-user path.
+ * Sessions render in a chat webview panel (chatPanel.ts): streaming
+ * bubbles, collapsible tool calls, inline permission cards (backed by
+ * goose GOOSE_MODE=smart_approve), a context-usage meter, and a status
+ * bar item. Independent of the analysis webviews; when a unified chat
+ * AgentClient lands (editor-extensions#1368), ClusterAcpSession becomes
+ * its cluster transport and this panel can be retired.
  */
 import * as vscode from "vscode";
 import type { Logger } from "winston";
@@ -22,6 +23,7 @@ import {
 import { AgentRunClient } from "./agentRunClient";
 import { openTunnel, type Tunnel } from "./portForward";
 import { ClusterAcpSession, type PermissionAsk } from "./acpSession";
+import { ClusterChatPanel } from "./chatPanel";
 import type { AgentRunParam, AgentRunSpec } from "./types";
 
 interface ActiveClusterSession {
@@ -29,157 +31,115 @@ interface ActiveClusterSession {
   session: ClusterAcpSession;
   tunnel: Tunnel;
   statusBar: vscode.StatusBarItem;
-  output: vscode.OutputChannel;
+  panel: ClusterChatPanel;
 }
 
 let active: ActiveClusterSession | null = null;
+let disconnecting = false;
 
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 async function disconnectActive(): Promise<void> {
-  if (!active) {
+  if (!active || disconnecting) {
     return;
   }
+  disconnecting = true;
   const current = active;
   active = null;
-  current.statusBar.dispose();
-  await current.session.close().catch(() => {});
-  current.tunnel.close();
-  current.output.appendLine(`\n[disconnected from ${current.runName} — the run keeps going]`);
+  try {
+    current.statusBar.dispose();
+    await current.session.close().catch(() => {});
+    current.tunnel.close();
+    current.panel.dispose();
+  } finally {
+    disconnecting = false;
+  }
 }
 
-async function askPermission(ask: PermissionAsk): Promise<string | null> {
-  const detailParts: string[] = [];
-  if (ask.toolName) {
-    detailParts.push(`Tool: ${ask.toolName}`);
-  }
-  if (ask.rawInput !== undefined) {
-    detailParts.push(JSON.stringify(ask.rawInput, null, 2).slice(0, 800));
-  }
+/** Modal fallback when the chat panel is gone. */
+async function askPermissionModal(ask: PermissionAsk): Promise<string | null> {
   const picked = await vscode.window.showWarningMessage(
     `Cluster agent requests permission: ${ask.title}`,
-    { modal: true, detail: detailParts.join("\n\n") || undefined },
+    { modal: true },
     ...ask.options.map((o) => o.name),
   );
-  const chosen = ask.options.find((o) => o.name === picked);
-  return chosen?.optionId ?? null;
-}
-
-function wireSession(
-  runName: string,
-  session: ClusterAcpSession,
-  tunnel: Tunnel,
-  output: vscode.OutputChannel,
-): ActiveClusterSession {
-  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBar.name = "Konveyor Cluster Agent";
-  statusBar.text = `$(hubot) ${runName}`;
-  statusBar.tooltip = "Konveyor cluster agent session (click to send a message)";
-  statusBar.command = "konveyor-core.clusterAgentPrompt";
-  statusBar.show();
-  return { runName, session, tunnel, statusBar, output };
-}
-
-/** Callbacks shared by run/attach paths; render into the output channel. */
-function sessionCallbacks(
-  output: vscode.OutputChannel,
-  getStatusBar: () => vscode.StatusBarItem | undefined,
-) {
-  let lastChunkKind: string | null = null;
-  return {
-    onChunk: (text: string, kind: "text" | "thinking") => {
-      if (kind !== lastChunkKind) {
-        output.append(kind === "thinking" ? "\n[thinking] " : "\n");
-        lastChunkKind = kind;
-      }
-      output.append(text);
-    },
-    onToolCall: (title: string, _id: string, status: string) => {
-      lastChunkKind = null;
-      output.appendLine(`\n[tool] ${title} (${status})`);
-    },
-    onToolCallUpdate: (_id: string, status: string, resultText?: string) => {
-      lastChunkKind = null;
-      output.appendLine(`[tool] -> ${status}${resultText ? `: ${resultText.slice(0, 300)}` : ""}`);
-    },
-    onUsage: (used: number, size: number) => {
-      const bar = getStatusBar();
-      if (bar) {
-        bar.text = `$(hubot) ${active?.runName ?? ""} ${formatTokens(used)}/${formatTokens(size)}`;
-      }
-    },
-    onPermission: askPermission,
-  };
-}
-
-async function promptLoop(output: vscode.OutputChannel, firstPrompt?: string): Promise<void> {
-  let next: string | undefined = firstPrompt;
-  for (;;) {
-    if (!next) {
-      next = await vscode.window.showInputBox({
-        prompt: "Message the cluster agent (Esc to disconnect; the run keeps going)",
-        ignoreFocusOut: true,
-      });
-    }
-    if (!next || !active) {
-      break;
-    }
-    output.appendLine(`\n\n>>> ${next}`);
-    try {
-      const stopReason = await active.session.prompt(next);
-      output.appendLine(`\n[turn complete: ${stopReason}]`);
-    } catch (err) {
-      output.appendLine(`\n[error: ${err instanceof Error ? err.message : String(err)}]`);
-      break;
-    }
-    next = undefined;
-  }
+  return ask.options.find((o) => o.name === picked)?.optionId ?? null;
 }
 
 async function connectAndChat(
   logger: Logger,
   runClient: AgentRunClient,
   runName: string,
-  output: vscode.OutputChannel,
-  options: { attachExisting: boolean; firstPrompt?: string },
+  options: { attachExisting: boolean },
 ): Promise<void> {
-  const endpoint = await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: `Cluster agent ${runName}`,
-      cancellable: false,
-    },
-    async (progress) => {
-      progress.report({ message: "waiting for sandbox..." });
-      return runClient.waitForAcpEndpoint(runName);
-    },
-  );
+  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBar.name = "Konveyor Cluster Agent";
+  statusBar.text = `$(hubot) ${runName}`;
+  statusBar.command = "konveyor-core.clusterAgentPrompt";
+  statusBar.show();
 
-  const tunnel = await openTunnel(
-    runClient.kc,
-    runClient.namespace,
-    endpoint.podName,
-    endpoint.port,
-  );
-
-  const session = await ClusterAcpSession.connect({
-    logger: logger as never,
-    endpoint: { host: "127.0.0.1", port: tunnel.localPort, secretKey: endpoint.secretKey },
-    callbacks: sessionCallbacks(output, () => active?.statusBar),
+  const panel = new ClusterChatPanel(`Agent: ${runName}`, {
+    onPrompt: (text) => {
+      void runPromptTurn(text);
+    },
+    onCancel: () => {
+      void active?.session.cancel();
+    },
+    onDisconnect: () => {
+      void disconnectActive();
+    },
   });
+  panel.status(runName, "provisioning sandbox…");
 
-  active = wireSession(runName, session, tunnel, output);
-  output.show(true);
+  let session: ClusterAcpSession;
+  let tunnel: Tunnel;
+  try {
+    const endpoint = await runClient.waitForAcpEndpoint(runName);
+    panel.status(runName, "connecting…");
+    tunnel = await openTunnel(runClient.kc, runClient.namespace, endpoint.podName, endpoint.port);
+
+    session = await ClusterAcpSession.connect({
+      logger: logger as never,
+      endpoint: { host: "127.0.0.1", port: tunnel.localPort, secretKey: endpoint.secretKey },
+      callbacks: {
+        onChunk: (text, kind) => panel.chunk(text, kind),
+        onToolCall: (title, id, status) => panel.toolCall(id || title, title, status),
+        onToolCallUpdate: (id, status, result) => panel.toolUpdate(id, status, result),
+        onUsage: (used, size) => {
+          panel.usage(used, size);
+          statusBar.text = `$(hubot) ${runName} ${formatTokens(used)}/${formatTokens(size)}`;
+        },
+        onPermission: (ask) =>
+          panel.isDisposed
+            ? askPermissionModal(ask)
+            : panel.askPermission({
+                title: ask.title,
+                detail:
+                  ask.rawInput !== undefined
+                    ? JSON.stringify(ask.rawInput, null, 2).slice(0, 800)
+                    : undefined,
+                options: ask.options,
+              }),
+      },
+    });
+  } catch (err) {
+    statusBar.dispose();
+    panel.error(err instanceof Error ? err.message : String(err));
+    panel.status(runName, "failed");
+    throw err;
+  }
+
+  active = { runName, session, tunnel, statusBar, panel };
 
   if (options.attachExisting && session.loadSessionSupported) {
-    // Try to resume the most recent session so history replays into the
-    // output channel; fall back to a fresh session.
+    // Resume the most recent session so history replays into the chat;
+    // fall back to a fresh session.
     try {
       const sessions = await session.listSessions();
       if (sessions.length > 0) {
-        output.appendLine(`[replaying session ${sessions[0]} of ${runName}]\n`);
+        panel.status(runName, "replaying history…");
         await session.loadSession(sessions[0]);
       } else {
         await session.newSession();
@@ -191,20 +151,37 @@ async function connectAndChat(
     await session.newSession();
   }
 
-  output.appendLine(`[connected to ${runName}; session ${session.getSessionId()}]`);
-  await promptLoop(output, options.firstPrompt);
-  await disconnectActive();
+  panel.status(runName, "connected", session.getSessionId() ?? undefined);
+}
+
+async function runPromptTurn(text: string): Promise<void> {
+  if (!active) {
+    return;
+  }
+  const { panel, session, runName } = active;
+  if (session.isPromptActive()) {
+    panel.error("A turn is already in progress.");
+    return;
+  }
+  panel.addUser(text);
+  panel.turnStart();
+  try {
+    const stopReason = await session.prompt(text);
+    panel.turnDone(stopReason);
+  } catch (err) {
+    panel.error(err instanceof Error ? err.message : String(err));
+    panel.status(runName, "disconnected?");
+  }
 }
 
 export function clusterAgentCommandsMap(
   state: ExtensionState,
   logger: Logger,
 ): { [command: string]: (...args: unknown[]) => unknown } {
-  const output = vscode.window.createOutputChannel("Konveyor Cluster Agent");
-
   return {
     "konveyor-core.startClusterAgent": async () => {
       if (active) {
+        active.panel.reveal();
         vscode.window.showInformationMessage(
           `Already connected to ${active.runName}. Disconnect first.`,
         );
@@ -227,25 +204,15 @@ export function clusterAgentCommandsMap(
         params.push({ name: "branch", value: repoInfo.currentBranch });
       }
 
-      const instructions = await vscode.window.showInputBox({
-        prompt: "Instructions for the agent run (composed with the Agent's standing prompt)",
-        value: "Analyze this application for migration blockers.",
-        ignoreFocusOut: true,
-      });
-      if (instructions === undefined) {
-        return;
-      }
-
       const provider = getConfigClusterAgentProvider();
       const model = getConfigClusterAgentModel();
       const approvalMode = getConfigClusterAgentApprovalMode();
       const spec: AgentRunSpec = {
         agentRef: getConfigClusterAgentRef(),
         params,
-        instructions,
         models: provider && model ? [{ role: "primary", provider, model }] : undefined,
         // smart_approve makes goose route write/execute tool calls through
-        // session/request_permission -> modal dialog in the IDE.
+        // session/request_permission -> inline approval cards in the chat.
         env:
           approvalMode === "smart_approve"
             ? [{ name: "GOOSE_MODE", value: "smart_approve" }]
@@ -254,11 +221,8 @@ export function clusterAgentCommandsMap(
 
       try {
         const run = await runClient.createAgentRun(spec, "ide-");
-        output.clear();
-        output.appendLine(`[created AgentRun ${run.metadata.name}]`);
-        await connectAndChat(logger, runClient, run.metadata.name!, output, {
+        await connectAndChat(logger, runClient, run.metadata.name!, {
           attachExisting: false,
-          firstPrompt: instructions || undefined,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -270,6 +234,7 @@ export function clusterAgentCommandsMap(
 
     "konveyor-core.attachClusterAgent": async () => {
       if (active) {
+        active.panel.reveal();
         vscode.window.showInformationMessage(
           `Already connected to ${active.runName}. Disconnect first.`,
         );
@@ -297,8 +262,7 @@ export function clusterAgentCommandsMap(
         if (!picked) {
           return;
         }
-        output.clear();
-        await connectAndChat(logger, runClient, picked.label, output, { attachExisting: true });
+        await connectAndChat(logger, runClient, picked.label, { attachExisting: true });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`attachClusterAgent failed: ${msg}`);
@@ -312,8 +276,7 @@ export function clusterAgentCommandsMap(
         vscode.window.showInformationMessage("No cluster agent session. Start or attach first.");
         return;
       }
-      // The prompt loop already owns input; this just refocuses output.
-      active.output.show(true);
+      active.panel.reveal();
     },
 
     "konveyor-core.disconnectClusterAgent": async () => {

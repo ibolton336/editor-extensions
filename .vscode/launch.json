@@ -14,6 +14,9 @@
         "--enable-proposed-api=konveyor.konveyor-ai",
         "--verbose"
       ],
+      "env": {
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:${env:PATH}"
+      },
       "cwd": "${workspaceFolder}/vscode/core",
       "outFiles": [
         "${workspaceFolder}/vscode/core/out/**/*.js",
