@@ -16,10 +16,49 @@ export interface ChatPermissionAsk {
   options: Array<{ optionId: string; name: string; kind: string }>;
 }
 
+/** One selectable Agent in the run setup form, derived from Agent CRs. */
+export interface SetupAgent {
+  name: string;
+  /** First lines of the Agent's standing prompt, as a description. */
+  promptPreview?: string;
+  params: Array<{
+    name: string;
+    type?: "string" | "number" | "boolean";
+    description?: string;
+    default?: string;
+    required?: boolean;
+  }>;
+  /** Flattened provider/model choices from the Agent's LLMProviders. */
+  models: Array<{ provider: string; model: string; tier?: string }>;
+}
+
+export interface SetupData {
+  agents: SetupAgent[];
+  /** Param prefill values (e.g. repository/branch detected from the workspace). */
+  prefill: Record<string, string>;
+  defaults: {
+    agentRef?: string;
+    provider?: string;
+    model?: string;
+    smartApprove: boolean;
+  };
+}
+
+/** What the user submitted from the setup form. */
+export interface CreateRunPayload {
+  agentRef: string;
+  instructions: string;
+  params: Record<string, string>;
+  provider?: string;
+  model?: string;
+  smartApprove: boolean;
+}
+
 export interface ChatPanelHandlers {
   onPrompt: (text: string) => void;
   onCancel: () => void;
   onDisconnect: () => void;
+  onCreate?: (payload: CreateRunPayload) => void;
 }
 
 type ToWebview =
@@ -39,13 +78,16 @@ type ToWebview =
   | { t: "permDone"; permId: number; chosen: string }
   | { t: "turnStart" }
   | { t: "turnDone"; stopReason: string }
-  | { t: "error"; msg: string };
+  | { t: "error"; msg: string }
+  | { t: "setup"; data: SetupData }
+  | { t: "chatMode" };
 
 type FromWebview =
   | { t: "prompt"; text: string }
   | { t: "permChoice"; permId: number; optionId: string | null }
   | { t: "cancel" }
-  | { t: "disconnect" };
+  | { t: "disconnect" }
+  | { t: "create"; payload: CreateRunPayload };
 
 export class ClusterChatPanel {
   private readonly panel: vscode.WebviewPanel;
@@ -81,6 +123,9 @@ export class ClusterChatPanel {
           break;
         case "disconnect":
           this.handlers.onDisconnect();
+          break;
+        case "create":
+          this.handlers.onCreate?.(msg.payload);
           break;
       }
     });
@@ -149,6 +194,16 @@ export class ClusterChatPanel {
 
   error(msg: string): void {
     this.post({ t: "error", msg });
+  }
+
+  /** Show the run configuration form (before a run exists). */
+  showSetup(data: SetupData): void {
+    this.post({ t: "setup", data });
+  }
+
+  /** Switch from setup form to chat (after the run is created). */
+  startChat(): void {
+    this.post({ t: "chatMode" });
   }
 
   /** Inline permission card; resolves with the chosen optionId or null. */
@@ -249,6 +304,31 @@ function html(): string {
   .sys { text-align: center; font-size: .85em; opacity: .55; margin: 8px 0; }
   .err { color: var(--vscode-errorForeground); }
 
+  #setup { flex: 1; overflow-y: auto; padding: 18px 22px; display: none; max-width: 560px; }
+  #setup h2 { font-size: 1.1em; font-weight: 600; margin: 0 0 4px; }
+  #setup .sub { opacity: .6; font-size: .9em; margin-bottom: 16px; }
+  #setup label { display: block; font-size: .85em; font-weight: 600; margin: 12px 0 4px; }
+  #setup label .req { color: var(--vscode-errorForeground); }
+  #setup label .hint { font-weight: 400; opacity: .6; margin-left: 6px; }
+  #setup input[type="text"], #setup input[type="number"], #setup select, #setup textarea {
+    width: 100%; box-sizing: border-box; padding: 6px 9px; border-radius: 5px;
+    border: 1px solid var(--vscode-input-border, transparent);
+    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+    font-family: inherit; font-size: inherit; outline: none;
+  }
+  #setup input:focus, #setup select:focus, #setup textarea:focus {
+    border-color: var(--vscode-focusBorder);
+  }
+  #setup textarea { resize: vertical; min-height: 60px; }
+  #setup .agent-desc { opacity: .6; font-size: .85em; margin-top: 4px; font-style: italic; }
+  #setup .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  #setup .check label { margin: 0; font-weight: 400; }
+  #setup #create-btn { margin-top: 18px; cursor: pointer; border: none; border-radius: 6px;
+    padding: 8px 18px; background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground); font-size: inherit; }
+  #setup #create-btn:disabled { opacity: .4; cursor: default; }
+  #setup .prefilled { font-size: .78em; opacity: .55; margin-top: 2px; }
+
   #composer { display: flex; gap: 8px; padding: 10px 12px; align-items: flex-end;
     border-top: 1px solid var(--vscode-panel-border);
     background: var(--vscode-sideBar-background); }
@@ -272,6 +352,23 @@ function html(): string {
       <span id="usage-text"></span>
       <button id="disconnect" title="Disconnect (run keeps going)">⏻</button>
     </div>
+  </div>
+  <div id="setup">
+    <h2>New agent run</h2>
+    <div class="sub">Configure the AgentRun. Fields come from the Agent's declared parameters.</div>
+    <label for="agent-select">Agent</label>
+    <select id="agent-select"></select>
+    <div class="agent-desc" id="agent-desc"></div>
+    <label for="instructions">Instructions <span class="hint">composed with the agent's standing prompt</span></label>
+    <textarea id="instructions" placeholder="What should this run accomplish?"></textarea>
+    <div id="param-fields"></div>
+    <label for="model-select" id="model-label">Model</label>
+    <select id="model-select"></select>
+    <div class="check">
+      <input type="checkbox" id="smart-approve">
+      <label for="smart-approve">Ask before write/execute tool calls (human-in-the-loop)</label>
+    </div>
+    <button id="create-btn">Create run</button>
   </div>
   <div id="chat"></div>
   <div id="composer">
@@ -342,9 +439,140 @@ function html(): string {
     if (e.key === "Escape" && turnActive) { vscode.postMessage({ t: "cancel" }); }
   });
 
+  // ── Setup form ──────────────────────────────────────────────────
+  const setupEl = document.getElementById("setup");
+  const composer = document.getElementById("composer");
+  let setupData = null;
+
+  function currentAgent() {
+    const name = document.getElementById("agent-select").value;
+    return setupData.agents.find((a) => a.name === name) ?? setupData.agents[0];
+  }
+
+  function renderParamFields() {
+    const agent = currentAgent();
+    const holder = document.getElementById("param-fields");
+    holder.innerHTML = "";
+    document.getElementById("agent-desc").textContent = agent.promptPreview ?? "";
+    for (const p of agent.params) {
+      const label = document.createElement("label");
+      label.textContent = p.name;
+      if (p.required) {
+        const r = document.createElement("span");
+        r.className = "req"; r.textContent = " *";
+        label.appendChild(r);
+      }
+      if (p.description) {
+        const h = document.createElement("span");
+        h.className = "hint"; h.textContent = p.description;
+        label.appendChild(h);
+      }
+      holder.appendChild(label);
+      const prefilled = setupData.prefill[p.name];
+      if (p.type === "boolean") {
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.dataset.param = p.name;
+        cb.checked = (prefilled ?? p.default) === "true";
+        holder.appendChild(cb);
+      } else {
+        const input = document.createElement("input");
+        input.type = p.type === "number" ? "number" : "text";
+        input.dataset.param = p.name;
+        input.dataset.required = p.required ? "1" : "";
+        input.value = prefilled ?? p.default ?? "";
+        input.placeholder = p.default ?? "";
+        input.addEventListener("input", validateSetup);
+        holder.appendChild(input);
+        if (prefilled !== undefined) {
+          const note = document.createElement("div");
+          note.className = "prefilled"; note.textContent = "detected from workspace";
+          holder.appendChild(note);
+        }
+      }
+    }
+    renderModelOptions();
+    validateSetup();
+  }
+
+  function renderModelOptions() {
+    const agent = currentAgent();
+    const sel = document.getElementById("model-select");
+    sel.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = ""; none.textContent = "(agent default)";
+    sel.appendChild(none);
+    for (const m of agent.models) {
+      const o = document.createElement("option");
+      o.value = m.provider + "|" + m.model;
+      o.textContent = m.model + " (" + m.provider + (m.tier ? ", " + m.tier : "") + ")";
+      sel.appendChild(o);
+    }
+    const d = setupData.defaults;
+    if (d.provider && d.model) {
+      sel.value = d.provider + "|" + d.model;
+      if (sel.value !== d.provider + "|" + d.model) { sel.value = ""; }
+    }
+  }
+
+  function validateSetup() {
+    let ok = true;
+    for (const input of setupEl.querySelectorAll("input[data-required='1']")) {
+      if (!input.value.trim()) { ok = false; }
+    }
+    document.getElementById("create-btn").disabled = !ok;
+  }
+
+  function renderSetup(data) {
+    setupData = data;
+    const btn = document.getElementById("create-btn");
+    btn.disabled = false; btn.textContent = "Create run";
+    const sel = document.getElementById("agent-select");
+    sel.innerHTML = "";
+    for (const a of data.agents) {
+      const o = document.createElement("option");
+      o.value = a.name; o.textContent = a.name;
+      sel.appendChild(o);
+    }
+    if (data.defaults.agentRef) { sel.value = data.defaults.agentRef; }
+    if (!sel.value && data.agents.length) { sel.value = data.agents[0].name; }
+    sel.addEventListener("change", renderParamFields);
+    document.getElementById("smart-approve").checked = data.defaults.smartApprove;
+    renderParamFields();
+    setupEl.style.display = "block";
+    composer.style.display = "none";
+    chat.style.display = "none";
+  }
+
+  document.getElementById("create-btn").addEventListener("click", () => {
+    const params = {};
+    for (const el of setupEl.querySelectorAll("[data-param]")) {
+      const value = el.type === "checkbox" ? String(el.checked) : el.value.trim();
+      if (value !== "") { params[el.dataset.param] = value; }
+    }
+    const modelValue = document.getElementById("model-select").value;
+    const [provider, model] = modelValue ? modelValue.split("|") : [undefined, undefined];
+    document.getElementById("create-btn").disabled = true;
+    document.getElementById("create-btn").textContent = "Creating…";
+    vscode.postMessage({ t: "create", payload: {
+      agentRef: document.getElementById("agent-select").value,
+      instructions: document.getElementById("instructions").value.trim(),
+      params, provider, model,
+      smartApprove: document.getElementById("smart-approve").checked,
+    }});
+  });
+
+  function enterChatMode() {
+    setupEl.style.display = "none";
+    chat.style.display = "block";
+    composer.style.display = "flex";
+    input.focus();
+  }
+
   window.addEventListener("message", (event) => {
     const m = event.data;
     switch (m.t) {
+      case "setup": renderSetup(m.data); return;
+      case "chatMode": enterChatMode(); return;
       case "status": {
         document.getElementById("run").textContent = m.runName;
         document.getElementById("state").textContent =

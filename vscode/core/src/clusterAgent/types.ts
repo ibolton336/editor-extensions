@@ -57,3 +57,38 @@ export interface AgentRun {
   spec: AgentRunSpec;
   status?: AgentRunStatus;
 }
+
+// ─── Agent / LLMProvider (read-only, for the run setup form) ─────────
+
+export const AGENT_PLURAL = "agents";
+export const LLMPROVIDER_PLURAL = "llmproviders";
+
+export interface AgentParamDecl {
+  name: string;
+  type?: "string" | "number" | "boolean";
+  description?: string;
+  default?: string;
+  required?: boolean;
+}
+
+export interface Agent {
+  apiVersion: string;
+  kind: "Agent";
+  metadata: { name?: string; namespace?: string };
+  spec: {
+    image: string;
+    prompt?: string;
+    providers: Array<{ ref: string }>;
+    params?: AgentParamDecl[];
+  };
+}
+
+export interface LLMProvider {
+  apiVersion: string;
+  kind: "LLMProvider";
+  metadata: { name?: string; namespace?: string };
+  spec: {
+    endpoint: string;
+    models: Array<{ name: string; contextWindow: number; tier?: string }>;
+  };
+}

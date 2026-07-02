@@ -23,8 +23,8 @@ import {
 import { AgentRunClient } from "./agentRunClient";
 import { openTunnel, type Tunnel } from "./portForward";
 import { ClusterAcpSession, type PermissionAsk } from "./acpSession";
-import { ClusterChatPanel } from "./chatPanel";
-import type { AgentRunParam, AgentRunSpec } from "./types";
+import { ClusterChatPanel, type SetupAgent, type SetupData } from "./chatPanel";
+import type { AgentRunSpec } from "./types";
 
 interface ActiveClusterSession {
   runName: string;
@@ -68,20 +68,9 @@ async function askPermissionModal(ask: PermissionAsk): Promise<string | null> {
   return ask.options.find((o) => o.name === picked)?.optionId ?? null;
 }
 
-async function connectAndChat(
-  logger: Logger,
-  runClient: AgentRunClient,
-  runName: string,
-  options: { attachExisting: boolean },
-): Promise<void> {
-  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBar.name = "Konveyor Cluster Agent";
-  statusBar.text = `$(hubot) ${runName}`;
-  statusBar.command = "konveyor-core.clusterAgentPrompt";
-  statusBar.show();
-
-  const panel = new ClusterChatPanel(`Agent: ${runName}`, {
-    onPrompt: (text) => {
+function standardHandlers() {
+  return {
+    onPrompt: (text: string) => {
       void runPromptTurn(text);
     },
     onCancel: () => {
@@ -90,7 +79,23 @@ async function connectAndChat(
     onDisconnect: () => {
       void disconnectActive();
     },
-  });
+  };
+}
+
+async function connectAndChat(
+  logger: Logger,
+  runClient: AgentRunClient,
+  runName: string,
+  options: { attachExisting: boolean; panel?: ClusterChatPanel; firstPrompt?: string },
+): Promise<void> {
+  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBar.name = "Konveyor Cluster Agent";
+  statusBar.text = `$(hubot) ${runName}`;
+  statusBar.command = "konveyor-core.clusterAgentPrompt";
+  statusBar.show();
+
+  const panel = options.panel ?? new ClusterChatPanel(`Agent: ${runName}`, standardHandlers());
+  panel.startChat();
   panel.status(runName, "provisioning sandbox…");
 
   let session: ClusterAcpSession;
@@ -152,6 +157,10 @@ async function connectAndChat(
   }
 
   panel.status(runName, "connected", session.getSessionId() ?? undefined);
+
+  if (options.firstPrompt) {
+    void runPromptTurn(options.firstPrompt);
+  }
 }
 
 async function runPromptTurn(text: string): Promise<void> {
@@ -197,38 +206,94 @@ export function clusterAgentCommandsMap(
         kubeconfigPath: getConfigClusterAgentKubeconfig(),
       });
 
-      const params: AgentRunParam[] = [];
-      const repoInfo = await getRepositoryInfo(workspaceRoot, logger as never).catch(() => null);
-      if (repoInfo) {
-        params.push({ name: "repository", value: `https://${repoInfo.remoteUrl}.git` });
-        params.push({ name: "branch", value: repoInfo.currentBranch });
-      }
-
-      const provider = getConfigClusterAgentProvider();
-      const model = getConfigClusterAgentModel();
-      const approvalMode = getConfigClusterAgentApprovalMode();
-      const spec: AgentRunSpec = {
-        agentRef: getConfigClusterAgentRef(),
-        params,
-        models: provider && model ? [{ role: "primary", provider, model }] : undefined,
-        // smart_approve makes goose route write/execute tool calls through
-        // session/request_permission -> inline approval cards in the chat.
-        env:
-          approvalMode === "smart_approve"
-            ? [{ name: "GOOSE_MODE", value: "smart_approve" }]
-            : undefined,
-      };
+      let setupData: SetupData;
+      const panel = new ClusterChatPanel("New Cluster Agent Run", {
+        ...standardHandlers(),
+        onCreate: async (payload) => {
+          const spec: AgentRunSpec = {
+            agentRef: payload.agentRef,
+            instructions: payload.instructions || undefined,
+            params: Object.entries(payload.params).map(([name, value]) => ({ name, value })),
+            models:
+              payload.provider && payload.model
+                ? [{ role: "primary", provider: payload.provider, model: payload.model }]
+                : undefined,
+            // smart_approve makes goose route write/execute tool calls
+            // through session/request_permission -> inline approval cards.
+            env: payload.smartApprove
+              ? [{ name: "GOOSE_MODE", value: "smart_approve" }]
+              : undefined,
+          };
+          try {
+            const run = await runClient.createAgentRun(spec, "ide-");
+            await connectAndChat(logger, runClient, run.metadata.name!, {
+              attachExisting: false,
+              panel,
+              firstPrompt: payload.instructions || undefined,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error(`startClusterAgent create failed: ${msg}`);
+            vscode.window.showErrorMessage(`Cluster agent failed: ${msg}`);
+            if (!panel.isDisposed) {
+              panel.showSetup(setupData);
+            } else {
+              await disconnectActive();
+            }
+          }
+        },
+      });
 
       try {
-        const run = await runClient.createAgentRun(spec, "ide-");
-        await connectAndChat(logger, runClient, run.metadata.name!, {
-          attachExisting: false,
-        });
+        // Build the setup form from the cluster's Agent + LLMProvider CRs.
+        const [agents, providers, repoInfo] = await Promise.all([
+          runClient.listAgents(),
+          runClient.listLLMProviders(),
+          getRepositoryInfo(workspaceRoot, logger as never).catch(() => null),
+        ]);
+        if (agents.length === 0) {
+          panel.dispose();
+          vscode.window.showWarningMessage(`No Agents found in namespace ${runClient.namespace}.`);
+          return;
+        }
+        const providerModels = new Map(
+          providers.map((p) => [p.metadata.name!, p.spec.models ?? []]),
+        );
+        const setupAgents: SetupAgent[] = agents.map((a) => ({
+          name: a.metadata.name!,
+          promptPreview: a.spec.prompt?.trim().split("\n").slice(0, 2).join(" "),
+          params: a.spec.params ?? [],
+          models: (a.spec.providers ?? []).flatMap(({ ref }) =>
+            (providerModels.get(ref) ?? []).map((m) => ({
+              provider: ref,
+              model: m.name,
+              tier: m.tier,
+            })),
+          ),
+        }));
+
+        const prefill: Record<string, string> = {};
+        if (repoInfo) {
+          prefill.repository = `https://${repoInfo.remoteUrl}.git`;
+          prefill.branch = repoInfo.currentBranch;
+        }
+
+        setupData = {
+          agents: setupAgents,
+          prefill,
+          defaults: {
+            agentRef: getConfigClusterAgentRef(),
+            provider: getConfigClusterAgentProvider(),
+            model: getConfigClusterAgentModel(),
+            smartApprove: getConfigClusterAgentApprovalMode() === "smart_approve",
+          },
+        };
+        panel.showSetup(setupData);
       } catch (err) {
+        panel.dispose();
         const msg = err instanceof Error ? err.message : String(err);
-        logger.error(`startClusterAgent failed: ${msg}`);
-        vscode.window.showErrorMessage(`Cluster agent failed: ${msg}`);
-        await disconnectActive();
+        logger.error(`startClusterAgent setup failed: ${msg}`);
+        vscode.window.showErrorMessage(`Cluster agent setup failed: ${msg}`);
       }
     },
 

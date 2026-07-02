@@ -12,8 +12,12 @@ import {
   GROUP,
   VERSION,
   AGENTRUN_PLURAL,
+  AGENT_PLURAL,
+  LLMPROVIDER_PLURAL,
+  type Agent,
   type AgentRun,
   type AgentRunSpec,
+  type LLMProvider,
 } from "./types";
 
 /** Everything needed to open an authenticated ACP connection to a run. */
@@ -77,6 +81,26 @@ export class AgentRunClient {
     })) as AgentRun;
     this.logger.info(`AgentRunClient: created AgentRun ${created.metadata.name}`);
     return created;
+  }
+
+  async listAgents(): Promise<Agent[]> {
+    const list = (await this.custom.listNamespacedCustomObject({
+      group: GROUP,
+      version: VERSION,
+      namespace: this.namespace,
+      plural: AGENT_PLURAL,
+    })) as { items: Agent[] };
+    return list.items;
+  }
+
+  async listLLMProviders(): Promise<LLMProvider[]> {
+    const list = (await this.custom.listNamespacedCustomObject({
+      group: GROUP,
+      version: VERSION,
+      namespace: this.namespace,
+      plural: LLMPROVIDER_PLURAL,
+    })) as { items: LLMProvider[] };
+    return list.items;
   }
 
   async listAgentRuns(): Promise<AgentRun[]> {
