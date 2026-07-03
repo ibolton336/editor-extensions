@@ -123,6 +123,17 @@ export class AgentRunClient {
     })) as AgentRun;
   }
 
+  async deleteAgentRun(name: string): Promise<void> {
+    await this.custom.deleteNamespacedCustomObject({
+      group: GROUP,
+      version: VERSION,
+      namespace: this.namespace,
+      plural: AGENTRUN_PLURAL,
+      name,
+    });
+    this.logger.info(`AgentRunClient: deleted AgentRun ${name}`);
+  }
+
   /**
    * Polls until the run is Running with a published ACP key, then
    * resolves the connection pieces.

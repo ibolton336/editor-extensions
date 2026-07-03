@@ -16,6 +16,48 @@ import winston from "winston";
 export const ACP_PATH = "/acp";
 export const SECRET_KEY_HEADER = "X-Secret-Key";
 
+const HEARTBEAT_INTERVAL_MS = 10_000;
+
+/**
+ * WebSocket with ping/pong liveness. Port-forward tunnels and half-open
+ * TCP can leave a dead connection looking healthy forever; both goose
+ * (tungstenite) and the mock harness (ws) auto-answer pings per the
+ * RFC, so a missed pong means the far side is gone — terminate so
+ * 'close' fires and reconnect logic can take over.
+ */
+class HeartbeatWebSocket extends WebSocket {
+  constructor(
+    url: string,
+    protocols?: string | string[],
+    options?: { headers?: Record<string, string> },
+  ) {
+    super(url, protocols, options);
+    let alive = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    this.on("open", () => {
+      timer = setInterval(() => {
+        if (!alive) {
+          this.terminate();
+          return;
+        }
+        alive = false;
+        this.ping();
+      }, HEARTBEAT_INTERVAL_MS);
+    });
+    this.on("pong", () => {
+      alive = true;
+    });
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    this.on("close", stop);
+    this.on("error", stop);
+  }
+}
+
 export interface PermissionChoice {
   optionId: string;
   name: string;
@@ -73,7 +115,7 @@ export class ClusterAcpSession {
     logger.info(`ClusterAcpSession: connecting ${url}`);
 
     const stream = createWebSocketStream(url, {
-      WebSocket,
+      WebSocket: HeartbeatWebSocket,
       headers: { [SECRET_KEY_HEADER]: endpoint.secretKey },
     });
 
@@ -124,6 +166,21 @@ export class ClusterAcpSession {
   getSessionId(): string | null {
     return this.sessionId;
   }
+
+  /**
+   * Registers a callback for when the underlying connection closes
+   * (WebSocket drop, pod restart, tunnel death). Fires once. Not fired
+   * by an explicit close() — callers should detach first.
+   */
+  onClosed(cb: () => void): void {
+    void this.connection.closed.then(() => {
+      if (!this.explicitlyClosed) {
+        cb();
+      }
+    });
+  }
+
+  private explicitlyClosed = false;
 
   isPromptActive(): boolean {
     return this.promptActive;
@@ -187,6 +244,7 @@ export class ClusterAcpSession {
   }
 
   async close(): Promise<void> {
+    this.explicitlyClosed = true;
     try {
       this.connection.close();
     } catch {

@@ -40,6 +40,8 @@ export interface AgentRunStatus {
   sandboxName?: string;
   startTime?: string;
   completionTime?: string;
+  /** Wall-clock duration of the run in seconds. */
+  duration?: number;
   /** Secret holding the ACP auth key (X-Secret-Key) for this run. */
   secretKeyRef?: { name: string };
   conditions?: Array<{ type: string; status: string; reason?: string; message?: string }>;

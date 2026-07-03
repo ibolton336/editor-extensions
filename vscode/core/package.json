@@ -214,7 +214,8 @@
       {
         "command": "konveyor-core.startClusterAgent",
         "title": "Start Cluster Agent on This Workspace",
-        "category": "Konveyor"
+        "category": "Konveyor",
+        "icon": "$(add)"
       },
       {
         "command": "konveyor-core.attachClusterAgent",
@@ -225,6 +226,24 @@
         "command": "konveyor-core.disconnectClusterAgent",
         "title": "Disconnect Cluster Agent",
         "category": "Konveyor"
+      },
+      {
+        "command": "konveyor-core.clusterAgentRuns.refresh",
+        "title": "Refresh Cluster Agent Runs",
+        "category": "Konveyor",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "konveyor-core.clusterAgentRuns.attach",
+        "title": "Attach",
+        "category": "Konveyor",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "konveyor-core.clusterAgentRuns.stop",
+        "title": "Stop and Delete Run",
+        "category": "Konveyor",
+        "icon": "$(trash)"
       }
     ],
     "submenus": [
@@ -247,6 +266,10 @@
         {
           "id": "konveyor-core.issueView",
           "name": "Konveyor"
+        },
+        {
+          "id": "konveyor-core.clusterAgentRuns",
+          "name": "Cluster Agent Runs"
         }
       ]
     },
@@ -283,6 +306,16 @@
           "command": "konveyor-core.expandAllIssues",
           "group": "navigation@3",
           "when": "view == konveyor-core.issueView"
+        },
+        {
+          "command": "konveyor-core.clusterAgentRuns.refresh",
+          "when": "view == konveyor-core.clusterAgentRuns",
+          "group": "navigation"
+        },
+        {
+          "command": "konveyor-core.startClusterAgent",
+          "when": "view == konveyor-core.clusterAgentRuns",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -305,6 +338,16 @@
           "command": "konveyor-core.openAnalysisDetails",
           "group": "inline@1",
           "when": "view == konveyor-core.issueView && viewItem == incident-type-item"
+        },
+        {
+          "command": "konveyor-core.clusterAgentRuns.attach",
+          "when": "view == konveyor-core.clusterAgentRuns && viewItem == agentRunRunning",
+          "group": "inline"
+        },
+        {
+          "command": "konveyor-core.clusterAgentRuns.stop",
+          "when": "view == konveyor-core.clusterAgentRuns && viewItem =~ /agentRun/",
+          "group": "inline"
         }
       ],
       "explorer/context": [
@@ -322,6 +365,14 @@
         {
           "command": "konveyor-core.loadRuleSets",
           "when": "never"
+        },
+        {
+          "command": "konveyor-core.clusterAgentRuns.attach",
+          "when": "false"
+        },
+        {
+          "command": "konveyor-core.clusterAgentRuns.stop",
+          "when": "false"
         }
       ]
     },

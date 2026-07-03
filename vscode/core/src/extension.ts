@@ -579,6 +579,9 @@ class VsCodeExtension {
       // Diff view removed - using unified decorator flow instead
       this.listeners.push(this.onDidChangeData(registerIssueView(this.state)));
 
+      const { registerClusterAgentRunsView } = await import("./clusterAgent/runsView");
+      registerClusterAgentRunsView(this.context, this.state.logger);
+
       await vscode.commands.executeCommand("setContext", `${EXTENSION_NAME}.hasIssues`, false);
 
       this.registerCoreHealthChecks();

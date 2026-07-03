@@ -80,7 +80,8 @@ type ToWebview =
   | { t: "turnDone"; stopReason: string }
   | { t: "error"; msg: string }
   | { t: "setup"; data: SetupData }
-  | { t: "chatMode" };
+  | { t: "chatMode" }
+  | { t: "clearChat" };
 
 type FromWebview =
   | { t: "prompt"; text: string }
@@ -204,6 +205,17 @@ export class ClusterChatPanel {
   /** Switch from setup form to chat (after the run is created). */
   startChat(): void {
     this.post({ t: "chatMode" });
+  }
+
+  /** Wipe the transcript (used before a session/load history replay). */
+  clearChat(): void {
+    // Pending permission cards are wiped from the DOM; resolve their
+    // promises as cancelled so nothing waits on an unclickable card.
+    for (const resolve of this.pendingPerms.values()) {
+      resolve(null);
+    }
+    this.pendingPerms.clear();
+    this.post({ t: "clearChat" });
   }
 
   /** Inline permission card; resolves with the chosen optionId or null. */
@@ -573,6 +585,12 @@ function html(): string {
     switch (m.t) {
       case "setup": renderSetup(m.data); return;
       case "chatMode": enterChatMode(); return;
+      case "clearChat":
+        chat.innerHTML = "";
+        tools.clear();
+        endAgentBubble();
+        setTurn(false);
+        return;
       case "status": {
         document.getElementById("run").textContent = m.runName;
         document.getElementById("state").textContent =
@@ -692,7 +710,9 @@ function html(): string {
       case "turnStart": setTurn(true); break;
       case "turnDone": {
         setTurn(false); endAgentBubble();
-        if (m.stopReason && m.stopReason !== "end_turn") { sys("turn ended: " + m.stopReason); }
+        if (m.stopReason && m.stopReason !== "end_turn") {
+          sys(m.stopReason.startsWith("run ") ? m.stopReason : "turn ended: " + m.stopReason);
+        }
         break;
       }
       case "error": { setTurn(false); endAgentBubble(); sys(m.msg, "err"); break; }
