@@ -31,7 +31,10 @@ export interface AcpEndpoint {
   secretKey: string;
 }
 
-const SECRET_DATA_KEY = "ACP_SECRET_KEY";
+// The ACP key Secret is keyed differently by the two reconcilers we support:
+// the dev-mode simulator writes "ACP_SECRET_KEY"; the real agentic-controller
+// (Agent Sandbox) writes "secret-key". Accept either, newest-first.
+const SECRET_DATA_KEYS = ["secret-key", "ACP_SECRET_KEY"];
 const ACP_PORT = 4000;
 
 export interface AgentRunClientOptions {
@@ -140,16 +143,23 @@ export class AgentRunClient {
    */
   async waitForAcpEndpoint(
     name: string,
-    options?: { timeoutMs?: number; pollIntervalMs?: number },
+    options?: {
+      timeoutMs?: number;
+      pollIntervalMs?: number;
+      /** Called each poll while still waiting, so callers can surface progress. */
+      onProgress?: (info: { phase: string; elapsedMs: number }) => void;
+    },
   ): Promise<AcpEndpoint> {
     const timeoutMs = options?.timeoutMs ?? 120_000;
     const interval = options?.pollIntervalMs ?? 1_000;
-    const deadline = Date.now() + timeoutMs;
+    const start = Date.now();
+    const deadline = start + timeoutMs;
 
     let sandboxName: string | undefined;
     let secretName: string | undefined;
     for (;;) {
       const run = await this.getAgentRun(name);
+      const phase = run.status?.phase ?? "unset";
       if (
         run.status?.phase === "Running" &&
         run.status.sandboxName &&
@@ -167,10 +177,19 @@ export class AgentRunClient {
         throw new Error(`AgentRun ${name} failed${msg ? `: ${msg}` : ""}`);
       }
       if (Date.now() > deadline) {
+        // A run still "unset"/"Pending" at the deadline was never advanced by a
+        // controller — in local dev that means the simulator isn't running.
+        const stalled = phase === "unset" || phase === "Pending";
         throw new Error(
-          `Timed out waiting for AgentRun ${name} (phase=${run.status?.phase ?? "unset"})`,
+          `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for AgentRun ${name} ` +
+            `to become Running (phase=${phase}).` +
+            (stalled
+              ? " Nothing is advancing the run — ensure the agentic-controller is reconciling it " +
+                "(in local dev mode, start the simulator: `npm run simulator` in packages/agentrun-client)."
+              : ""),
         );
       }
+      options?.onProgress?.({ phase, elapsedMs: Date.now() - start });
       await new Promise((r) => setTimeout(r, interval));
     }
 
@@ -180,23 +199,38 @@ export class AgentRunClient {
     });
     const data = secret.data ?? {};
     const b64 =
-      data[SECRET_DATA_KEY] ??
+      SECRET_DATA_KEYS.map((k) => data[k]).find((v) => v !== undefined) ??
+      // Single-key Secret from some other reconciler: take whatever's there.
       (Object.keys(data).length === 1 ? Object.values(data)[0] : undefined);
     if (!b64) {
-      throw new Error(`Secret ${secretName} has no ${SECRET_DATA_KEY} entry`);
+      throw new Error(
+        `Secret ${secretName} has no ACP key (looked for ${SECRET_DATA_KEYS.join(", ")})`,
+      );
     }
 
-    const pods = await this.core.listNamespacedPod({
-      namespace: this.namespace,
-      labelSelector: `konveyor.io/agentrun=${name}`,
-    });
-    const pod = pods.items.find((p) => p.status?.phase === "Running") ?? pods.items[0];
-    if (!pod?.metadata?.name) {
-      throw new Error(`No sandbox pod found for AgentRun ${name}`);
+    // Both the real Agent Sandbox controller and the dev-mode simulator name the
+    // backing pod after the Sandbox, so resolve it by name first. Fall back to
+    // the run label for any reconciler that names its pod differently — the real
+    // controller does NOT put konveyor.io/agentrun on the pod, so name-first is
+    // what makes this work against agentic-controller.
+    let podName = await this.core
+      .readNamespacedPod({ name: sandboxName, namespace: this.namespace })
+      .then((p) => p.metadata?.name)
+      .catch(() => undefined);
+    if (!podName) {
+      const pods = await this.core.listNamespacedPod({
+        namespace: this.namespace,
+        labelSelector: `konveyor.io/agentrun=${name}`,
+      });
+      const pod = pods.items.find((p) => p.status?.phase === "Running") ?? pods.items[0];
+      podName = pod?.metadata?.name;
+    }
+    if (!podName) {
+      throw new Error(`No sandbox pod found for AgentRun ${name} (sandbox ${sandboxName})`);
     }
 
     return {
-      podName: pod.metadata.name,
+      podName,
       serviceHost: `${sandboxName}.${this.namespace}.svc`,
       port: ACP_PORT,
       secretKey: Buffer.from(b64, "base64").toString("utf8"),

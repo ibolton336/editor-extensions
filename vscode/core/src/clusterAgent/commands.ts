@@ -141,7 +141,24 @@ async function connectSession(options: {
 }): Promise<{ session: ClusterAcpSession; tunnel: Tunnel }> {
   const { logger, runClient, runName, panel, statusBar } = options;
 
-  const endpoint = await runClient.waitForAcpEndpoint(runName);
+  const endpoint = await runClient.waitForAcpEndpoint(runName, {
+    // After a short grace period, surface what we're actually waiting on so a
+    // stalled run (e.g. no controller/simulator reconciling it) isn't a silent
+    // spinner. The full timeout in waitForAcpEndpoint throws an actionable error.
+    onProgress: ({ phase, elapsedMs }) => {
+      if (elapsedMs < 15_000) {
+        return;
+      }
+      const secs = Math.round(elapsedMs / 1000);
+      const stalled = phase === "unset" || phase === "Pending";
+      panel.status(
+        runName,
+        stalled
+          ? `provisioning sandbox… (${phase}, ${secs}s — is the controller/simulator running?)`
+          : `provisioning sandbox… (${phase}, ${secs}s)`,
+      );
+    },
+  });
   const tunnel = await openTunnel(
     runClient.kc,
     runClient.namespace,
