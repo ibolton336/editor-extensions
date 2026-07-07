@@ -223,6 +223,12 @@
         "category": "Konveyor"
       },
       {
+        "command": "konveyor-core.attachWorkspaceAgent",
+        "title": "Attach to Cluster Agent for This Workspace",
+        "category": "Konveyor",
+        "icon": "$(plug)"
+      },
+      {
         "command": "konveyor-core.disconnectClusterAgent",
         "title": "Disconnect Cluster Agent",
         "category": "Konveyor"

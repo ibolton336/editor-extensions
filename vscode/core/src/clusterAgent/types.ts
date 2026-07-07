@@ -55,6 +55,7 @@ export interface AgentRun {
     generateName?: string;
     namespace?: string;
     labels?: Record<string, string>;
+    creationTimestamp?: string;
   };
   spec: AgentRunSpec;
   status?: AgentRunStatus;

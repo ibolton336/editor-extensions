@@ -10,7 +10,8 @@
 import * as vscode from "vscode";
 import type { Logger } from "winston";
 import type { ExtensionState } from "../extensionState";
-import { getRepositoryInfo } from "../utilities/git";
+import { getRepositoryInfo, type RepositoryInfo } from "../utilities/git";
+import { matchRunsToRemote, runBranch } from "./repoMatch";
 import {
   getConfigClusterAgentNamespace,
   getConfigClusterAgentRef,
@@ -48,6 +49,28 @@ interface ActiveClusterSession {
 
 let active: ActiveClusterSession | null = null;
 let disconnecting = false;
+/**
+ * True while a connect is in flight but `active` is not yet assigned
+ * (connectSession can take 10-120s while a sandbox provisions). Guards
+ * every entry point so two connects can't race and clobber each other.
+ */
+let connecting = false;
+
+/** Show why a new connection can't start right now. True if busy. */
+function busyNotice(): boolean {
+  if (active) {
+    active.panel.reveal();
+    vscode.window.showInformationMessage(
+      `Already connected to ${active.runName}. Disconnect first.`,
+    );
+    return true;
+  }
+  if (connecting) {
+    vscode.window.showInformationMessage("A cluster agent connection is already in progress.");
+    return true;
+  }
+  return false;
+}
 
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -436,25 +459,117 @@ async function runPromptTurn(text: string): Promise<void> {
 }
 
 async function attachToRun(logger: Logger, runName: string): Promise<void> {
-  if (active) {
-    active.panel.reveal();
-    vscode.window.showInformationMessage(
-      `Already connected to ${active.runName}. Disconnect first.`,
-    );
+  if (busyNotice()) {
     return;
   }
-  const runClient = new AgentRunClient({
-    logger: logger as never,
-    namespace: getConfigClusterAgentNamespace(),
-    kubeconfigPath: getConfigClusterAgentKubeconfig(),
-  });
+  connecting = true;
   try {
+    const runClient = new AgentRunClient({
+      logger: logger as never,
+      namespace: getConfigClusterAgentNamespace(),
+      kubeconfigPath: getConfigClusterAgentKubeconfig(),
+    });
+    // Re-validate before connecting: toasts and QuickPicks can sit
+    // unanswered long after the run finished or was deleted.
+    const run = await runClient.getAgentRun(runName).catch(() => null);
+    if (!run) {
+      vscode.window.showInformationMessage(`AgentRun ${runName} no longer exists.`);
+      refreshRunsView();
+      return;
+    }
+    const phase = run.status?.phase;
+    if (phase === "Succeeded" || phase === "Failed") {
+      vscode.window.showInformationMessage(`AgentRun ${runName} already finished (${phase}).`);
+      refreshRunsView();
+      return;
+    }
     await connectAndChat(logger, runClient, runName, { attachExisting: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`attachToRun(${runName}) failed: ${msg}`);
     vscode.window.showErrorMessage(`Cluster agent attach failed: ${msg}`);
     await disconnectActive();
+  } finally {
+    connecting = false;
+  }
+}
+
+/**
+ * Resolve the open workspace's git remote via the vscode.git API, retrying
+ * briefly — at activation the git extension may not have initialized yet.
+ */
+async function workspaceRepoInfo(
+  state: ExtensionState,
+  logger: Logger,
+  attempts = 1,
+): Promise<RepositoryInfo | null> {
+  const workspaceRootUri = state.data.workspaceRoot;
+  const workspaceRoot = workspaceRootUri.startsWith("file://")
+    ? vscode.Uri.parse(workspaceRootUri).fsPath
+    : workspaceRootUri;
+  for (let i = 0; i < attempts; i++) {
+    const info = await getRepositoryInfo(workspaceRoot, logger as never).catch(() => null);
+    if (info) {
+      return info;
+    }
+    if (i < attempts - 1) {
+      await sleep(5_000);
+    }
+  }
+  return null;
+}
+
+/** Runs already offered via toast this window — don't re-nag about them. */
+const offeredRuns = new Set<string>();
+
+/**
+ * Cross-client handoff: if AgentRuns are already Running against this
+ * workspace's repo (e.g. started from tackle2-ui or another IDE window),
+ * offer to attach. Best-effort and silent on any failure — no kubeconfig,
+ * no cluster, or no git remote simply means no offer.
+ */
+export async function offerWorkspaceAttach(state: ExtensionState, logger: Logger): Promise<void> {
+  try {
+    if (active || connecting) {
+      return;
+    }
+    const repoInfo = await workspaceRepoInfo(state, logger, 3);
+    if (!repoInfo) {
+      return;
+    }
+    const runClient = new AgentRunClient({
+      logger: logger as never,
+      namespace: getConfigClusterAgentNamespace(),
+      kubeconfigPath: getConfigClusterAgentKubeconfig(),
+    });
+    const matches = matchRunsToRemote(await runClient.listAgentRuns(), repoInfo.remoteUrl).filter(
+      (r) => r.metadata.name && !offeredRuns.has(r.metadata.name),
+    );
+    // Re-check after the awaits — the user may have connected meanwhile.
+    if (active || matches.length === 0) {
+      return;
+    }
+    matches.forEach((r) => offeredRuns.add(r.metadata.name!));
+    const newest = matches[0];
+    const branch = runBranch(newest);
+    const message =
+      matches.length === 1
+        ? `Cluster agent ${newest.metadata.name} is running on this workspace's repo` +
+          `${branch ? ` (${branch})` : ""}. Attach to it?`
+        : `${matches.length} cluster agents are running on this workspace's repo.`;
+    const choice = await vscode.window.showInformationMessage(message, "Attach", "Not Now");
+    if (choice !== "Attach" || active || connecting) {
+      return;
+    }
+    if (matches.length === 1) {
+      await attachToRun(logger, newest.metadata.name!);
+    } else {
+      await vscode.commands.executeCommand("konveyor-core.attachWorkspaceAgent");
+    }
+  } catch (err) {
+    logger.debug(
+      `offerWorkspaceAttach skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -464,11 +579,7 @@ export function clusterAgentCommandsMap(
 ): { [command: string]: (...args: unknown[]) => unknown } {
   return {
     "konveyor-core.startClusterAgent": async () => {
-      if (active) {
-        active.panel.reveal();
-        vscode.window.showInformationMessage(
-          `Already connected to ${active.runName}. Disconnect first.`,
-        );
+      if (busyNotice()) {
         return;
       }
       const workspaceRootUri = state.data.workspaceRoot;
@@ -485,6 +596,10 @@ export function clusterAgentCommandsMap(
       const panel = new ClusterChatPanel("New Cluster Agent Run", {
         ...standardHandlers(),
         onCreate: async (payload) => {
+          if (connecting || active) {
+            return;
+          }
+          connecting = true;
           const spec: AgentRunSpec = {
             agentRef: payload.agentRef,
             instructions: payload.instructions || undefined,
@@ -516,6 +631,8 @@ export function clusterAgentCommandsMap(
             } else {
               await disconnectActive();
             }
+          } finally {
+            connecting = false;
           }
         },
       });
@@ -574,11 +691,7 @@ export function clusterAgentCommandsMap(
     },
 
     "konveyor-core.attachClusterAgent": async () => {
-      if (active) {
-        active.panel.reveal();
-        vscode.window.showInformationMessage(
-          `Already connected to ${active.runName}. Disconnect first.`,
-        );
+      if (busyNotice()) {
         return;
       }
       const runClient = new AgentRunClient({
@@ -607,6 +720,56 @@ export function clusterAgentCommandsMap(
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error(`attachClusterAgent failed: ${msg}`);
+        vscode.window.showErrorMessage(`Cluster agent attach failed: ${msg}`);
+      }
+    },
+
+    "konveyor-core.attachWorkspaceAgent": async () => {
+      if (busyNotice()) {
+        return;
+      }
+      const repoInfo = await workspaceRepoInfo(state, logger);
+      if (!repoInfo) {
+        vscode.window.showInformationMessage(
+          "This workspace has no git remote to match against a running agent.",
+        );
+        return;
+      }
+      try {
+        const runClient = new AgentRunClient({
+          logger: logger as never,
+          namespace: getConfigClusterAgentNamespace(),
+          kubeconfigPath: getConfigClusterAgentKubeconfig(),
+        });
+        const matches = matchRunsToRemote(await runClient.listAgentRuns(), repoInfo.remoteUrl);
+        if (matches.length === 0) {
+          const pick = await vscode.window.showInformationMessage(
+            `No running cluster agents for ${repoInfo.remoteUrl}.`,
+            "Browse All Runs",
+          );
+          if (pick === "Browse All Runs") {
+            await vscode.commands.executeCommand("konveyor-core.attachClusterAgent");
+          }
+          return;
+        }
+        if (matches.length === 1) {
+          await attachToRun(logger, matches[0].metadata.name!);
+          return;
+        }
+        const picked = await vscode.window.showQuickPick(
+          matches.map((r) => ({
+            label: r.metadata.name!,
+            description: `agent: ${r.spec.agentRef}${runBranch(r) ? ` · branch: ${runBranch(r)}` : ""}`,
+            detail: r.spec.instructions?.slice(0, 100),
+          })),
+          { placeHolder: `Agents running on ${repoInfo.remoteUrl}` },
+        );
+        if (picked) {
+          await attachToRun(logger, picked.label);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`attachWorkspaceAgent failed: ${msg}`);
         vscode.window.showErrorMessage(`Cluster agent attach failed: ${msg}`);
       }
     },

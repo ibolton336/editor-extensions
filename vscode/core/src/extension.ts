@@ -586,6 +586,12 @@ class VsCodeExtension {
 
       this.registerCoreHealthChecks();
       this.registerCommands();
+
+      // Cross-client handoff: if an agent is already running against this
+      // workspace's repo (e.g. started from the web UI), offer to attach.
+      // Fire-and-forget; silent when there's no cluster/kubeconfig/remote.
+      const { offerWorkspaceAttach } = await import("./clusterAgent/commands");
+      void offerWorkspaceAttach(this.state, this.state.logger);
       this.registerLanguageProviders();
 
       this.context.subscriptions.push(this.diffStatusBarItem);

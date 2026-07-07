@@ -176,6 +176,11 @@ export class AgentRunClient {
           .join("; ");
         throw new Error(`AgentRun ${name} failed${msg ? `: ${msg}` : ""}`);
       }
+      if (run.status?.phase === "Succeeded") {
+        // Fail fast instead of polling out the full timeout — the sandbox
+        // pod is gone, there is nothing to attach to.
+        throw new Error(`AgentRun ${name} already finished (Succeeded).`);
+      }
       if (Date.now() > deadline) {
         // A run still "unset"/"Pending" at the deadline was never advanced by a
         // controller — in local dev that means the simulator isn't running.
